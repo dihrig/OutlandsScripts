@@ -1,0 +1,645 @@
+// ==========================================================
+// Nox Single - targeting + single target rotation in one script
+// Press the hotkey: a Poison cursor appears, click your enemy.
+// Press again to stop.
+//
+// Phase 1: fast Poison casts until the wanted level lands
+// Phase 2: rotation on that one target, one action per pass:
+//   escape > heals/cures > keep poison up > Poison Strike >
+//   necro debuffs > Mana Drain > damage spells
+// ==========================================================
+
+// ===== CONFIG =====
+// Escape on enemy players via Tracking.
+// To DISABLE: put // in front of the createlist line below.
+if listexists 'cfg_escape'
+    removelist 'cfg_escape'
+endif
+//createlist 'cfg_escape'
+
+// Tracking gump button: 7 = Players, 8 = hostile players only
+@setvar! TrackButton 7
+
+// Poison level: 1 = Deadly, 2 = Lethal
+@setvar! NoxLevel 2
+
+// Poison Strike when this many ticks or fewer are left (2 - 5)
+@setvar! StrikeTicks 3
+
+// Necro debuffs (1 = on, 0 = off)
+@setvar! UseCorpseSkin 1
+@setvar! UseMindRot 1
+@setvar! UseEvilOmen 1
+@setvar! UseStrangle 0
+
+// Damage spells only above this mana (keeps mana for Poison and heals)
+@setvar! NukeMana 40
+// Mind Blast as filler (1 = on, 0 = off)
+@setvar! UseMindBlast 1
+
+// Heal thresholds (missing hit points)
+@setvar! HealPotDiff 30
+@setvar! GreaterHealDiff 30
+
+// When the target dies: 1 = take the closest grey monster, 0 = stop
+@setvar! AutoNext 1
+
+// ===== Toggle =====
+// The multi target script can't be running at the same time
+if listexists 'nox_multi'
+    removelist 'nox_multi'
+endif
+if listexists 'nox_single'
+    removelist 'nox_single'
+    if targetexists
+        hotkey 'Cancel Current Target'
+    endif
+    overhead 'Single target OFF' 33
+    stop
+endif
+createlist 'nox_single'
+
+// Reset state flags from any previous run
+if listexists 'f_arcane'
+    removelist 'f_arcane'
+endif
+if listexists 'f_player'
+    removelist 'f_player'
+endif
+if targetexists
+    hotkey 'Cancel Current Target'
+    wait 100
+endif
+
+// Remembers the last mana-drained enemy (kept between runs)
+if not listexists 'lastdrain'
+    createlist 'lastdrain'
+endif
+
+// ===== Timers (99999 = ready immediately) =====
+if not timerexists 'manadrain'
+    createtimer 'manadrain'
+    settimer 'manadrain' 99999
+endif
+if not timerexists 'arrow'
+    createtimer 'arrow'
+    settimer 'arrow' 99999
+endif
+if not timerexists 'lightning'
+    createtimer 'lightning'
+    settimer 'lightning' 99999
+endif
+if not timerexists 'healpot'
+    createtimer 'healpot'
+    settimer 'healpot' 99999
+endif
+if not timerexists 'curepot'
+    createtimer 'curepot'
+    settimer 'curepot' 99999
+endif
+if not timerexists 'gheal'
+    createtimer 'gheal'
+    settimer 'gheal' 99999
+endif
+if not timerexists 'mushroom'
+    createtimer 'mushroom'
+    settimer 'mushroom' 99999
+endif
+if not timerexists 'mushtry'
+    createtimer 'mushtry'
+    settimer 'mushtry' 99999
+endif
+if not timerexists 'tracktry'
+    createtimer 'tracktry'
+    settimer 'tracktry' 99999
+endif
+if not timerexists 'explo'
+    createtimer 'explo'
+    settimer 'explo' 99999
+endif
+if not timerexists 'poisontry'
+    createtimer 'poisontry'
+    settimer 'poisontry' 99999
+endif
+if not timerexists 'pstrike'
+    createtimer 'pstrike'
+    settimer 'pstrike' 99999
+endif
+if not timerexists 'corpseskin'
+    createtimer 'corpseskin'
+    settimer 'corpseskin' 99999
+endif
+if not timerexists 'mindrot'
+    createtimer 'mindrot'
+    settimer 'mindrot' 99999
+endif
+if not timerexists 'evilomen'
+    createtimer 'evilomen'
+    settimer 'evilomen' 99999
+endif
+if not timerexists 'strangle'
+    createtimer 'strangle'
+    settimer 'strangle' 99999
+endif
+if not timerexists 'necrogap'
+    createtimer 'necrogap'
+    settimer 'necrogap' 99999
+endif
+if not timerexists 'attackref'
+    createtimer 'attackref'
+    settimer 'attackref' 99999
+endif
+
+// ==========================================================
+// PHASE 1: pick the target with the first Poison cast
+// ==========================================================
+if not findtype 3976 self
+    overhead 'No Nightshade!' 33
+    removelist 'nox_single'
+    stop
+endif
+if mana < 9
+    overhead 'Not enough mana!' 33
+    removelist 'nox_single'
+    stop
+endif
+
+@setvar! NoxLanded 0
+@setvar! NoxAbort 0
+
+overhead 'Select enemy' 68
+clearsysmsg
+cast 'Poison'
+waitfortarget 3000
+if not targetexists
+    overhead 'Cast did not start - try again' 33
+    removelist 'nox_single'
+    stop
+endif
+while targetexists
+    wait 50
+endwhile
+
+// The enemy lives in its own variable, so other target hotkeys can't move it
+@setvar! noxMain lasttarget
+
+if dead noxMain or not find noxMain ground -1 -1 12 or find noxMain ground -1 -1 0
+    overhead 'No valid target' 33
+    removelist 'nox_single'
+    stop
+endif
+
+warmode on
+attack noxMain
+settimer 'attackref' 0
+if followers > 0
+    say 'All kill'
+    waitfortarget 1500
+    if targetexists
+        target noxMain
+    endif
+endif
+
+// Fast opening: recast until the level is reached (max 5 casts)
+for 5
+    // Wait up to 1 s for the result: journal AND target label
+    for 10
+        getlabel noxMain noxLabel
+        if "Lethal" in noxLabel
+            @setvar! NoxLanded 1
+        elseif NoxLevel = 1 and "Deadly" in noxLabel
+            @setvar! NoxLanded 1
+        endif
+        if insysmsg 'upgraded to lethal'
+            @setvar! NoxLanded 1
+        endif
+        if NoxLevel = 1 and insysmsg 'upgraded to deadly'
+            @setvar! NoxLanded 1
+        endif
+        if NoxLanded = 1
+            break
+        endif
+        if dead noxMain or not find noxMain ground -1 -1 12 or find noxMain ground -1 -1 0
+            @setvar! NoxAbort 1
+            break
+        endif
+        if insysmsg 'cannot be seen' or insysmsg 'too far away'
+            @setvar! NoxAbort 1
+            break
+        endif
+        if insysmsg 'fizzle' or insysmsg 'recovered'
+            break
+        endif
+        wait 100
+    endfor
+    if NoxLanded = 1 or NoxAbort = 1
+        break
+    endif
+    if mana < 9 or not findtype 3976 self
+        break
+    endif
+    // Heal potion also during the opening
+    if diffhits >= HealPotDiff and timer 'healpot' >= 10000 and findtype 3852 self
+        dclicktype 3852
+        settimer 'healpot' 0
+        wait 200
+    endif
+    // Don't keep casting while badly hurt - the rotation heals first
+    if diffhits >= GreaterHealDiff
+        break
+    endif
+
+    clearsysmsg
+    cast 'Poison'
+    for 40
+        if targetexists
+            break
+        endif
+        if insysmsg 'upgraded to lethal'
+            @setvar! NoxLanded 1
+            break
+        endif
+        if NoxLevel = 1 and insysmsg 'upgraded to deadly'
+            @setvar! NoxLanded 1
+            break
+        endif
+        if insysmsg 'recovered' or insysmsg 'already casting'
+            break
+        endif
+        wait 50
+    endfor
+    if NoxLanded = 1
+        break
+    endif
+    if targetexists
+        if dead noxMain or not find noxMain ground -1 -1 12 or find noxMain ground -1 -1 0
+            @setvar! NoxAbort 1
+            break
+        endif
+        target noxMain
+    endif
+endfor
+
+if targetexists
+    hotkey 'Cancel Current Target'
+endif
+if NoxLanded = 1
+    overhead 'Poison landed!' 68
+endif
+
+// ==========================================================
+// PHASE 2: rotation
+// ==========================================================
+if listexists 'cfg_escape'
+    overhead 'Rotating ! (escape ON)' 68
+endif
+if not listexists 'cfg_escape'
+    overhead 'Rotating ! (escape OFF)' 68
+endif
+clearsysmsg
+
+while listexists 'nox_single' and not dead
+
+    // ===== 1. Read the journal into flags =====
+    if listexists 'cfg_escape' and insysmsg ' spaces'
+        if not listexists 'f_player'
+            createlist 'f_player'
+        endif
+    endif
+    if insysmsg '100% arcane buildup'
+        if not listexists 'f_arcane'
+            createlist 'f_arcane'
+        endif
+    endif
+    if insysmsg 'consume a magic mushroom'
+        settimer 'mushroom' 0
+    endif
+
+    // ===== 2. Clear once, after everything has been read =====
+    clearsysmsg
+
+    // A Poison cursor that arrived late must never be used by a self-target spell
+    if targetexists
+        hotkey 'Cancel Current Target'
+        wait 100
+    endif
+
+    // ===== 3. Escape =====
+    if listexists 'f_player'
+        removelist 'f_player'
+        overhead 'PLAYER CLOSE! ESCAPING!' 38
+        hotkey 'Cancel Current Target'
+        hotkey '> Interrupt'
+        whisper '[recall Guild Hall'
+        removelist 'nox_single'
+        if listexists 'f_arcane'
+            removelist 'f_arcane'
+        endif
+        stop
+    endif
+
+    if listexists 'cfg_escape' and skill 'Tracking' >= 80 and not findbuff 'Tracking' and timer 'tracktry' >= 10000
+        settimer 'tracktry' 0
+        if gumpexists 4267467659
+            gumpclose 4267467659
+        endif
+        useskill 'Tracking'
+        waitforgump 4267467659 2000
+        gumpresponse TrackButton 4267467659
+        wait 500
+        if gumpexists 4267467659
+            gumpresponse 6 4267467659
+        endif
+        wait 500
+    endif
+
+    // ===== 4. Defensive =====
+    if diffhits >= HealPotDiff and timer 'healpot' >= 10000 and findtype 3852 self
+        dclicktype 3852
+        settimer 'healpot' 0
+        wait 200
+    endif
+
+    if poisoned and timer 'curepot' >= 2000
+        if findtype 3847 self
+            dclicktype 3847
+            settimer 'curepot' 0
+            wait 200
+        elseif mana >= 6 and findtype 3972 self and findtype 3973 self
+            // Wait for a running cast to finish and drop any stray cursor,
+            // so 'target self' can only ever answer this heal/cure
+            for 25
+                if not casting
+                    break
+                endif
+                wait 100
+            endfor
+            if targetexists
+                hotkey 'Cancel Current Target'
+                wait 100
+            endif
+            cast 'Cure'
+            waitfortarget 2000
+            if targetexists
+                target 'self'
+            endif
+            settimer 'curepot' 0
+        endif
+    endif
+
+    if diffhits >= GreaterHealDiff and mana >= 11 and timer 'gheal' >= 2500 and findtype 3972 self and findtype 3973 self and findtype 3974 self and findtype 3981 self
+        // Wait for a running cast to finish and drop any stray cursor,
+        // so 'target self' can only ever answer this heal/cure
+        for 25
+            if not casting
+                break
+            endif
+            wait 100
+        endfor
+        if targetexists
+            hotkey 'Cancel Current Target'
+            wait 100
+        endif
+        cast 'Greater Heal'
+        waitfortarget 2500
+        if targetexists
+            target 'self'
+        endif
+        settimer 'gheal' 0
+    endif
+
+    if mana < 50 and timer 'mushroom' >= 60000
+        if timer 'mushtry' >= 3000
+            dclicktype 29012
+            settimer 'mushtry' 0
+            wait 200
+        endif
+    endif
+
+    // ===== 5. Target still alive? =====
+    @setvar! HaveTarget 1
+    if dead noxMain or not find noxMain ground -1 -1 12 or find noxMain ground -1 -1 0
+        @setvar! HaveTarget 0
+        if AutoNext = 0
+            overhead 'Target gone - stopped' 53
+            removelist 'nox_single'
+            stop
+        endif
+        hotkey 'Target Closest Grey Monster'
+        wait 150
+        if insysmsg 'No one matching'
+            overhead 'Target gone - nothing nearby' 53
+            removelist 'nox_single'
+            stop
+        endif
+        @setvar! noxCand lasttarget
+        getlabel noxCand candLabel
+        if find noxCand ground -1 -1 0
+            // that's us - never a target
+        elseif "tame" in candLabel or "summoned" in candLabel
+            @ignore noxCand
+        else
+            @setvar! noxMain noxCand
+            @setvar! HaveTarget 1
+            attack noxMain
+            settimer 'attackref' 0
+            if followers > 0
+                say 'All kill'
+                waitfortarget 1500
+                if targetexists
+                    target noxMain
+                endif
+            endif
+            overhead '[ NEW TARGET ]' 68 noxMain
+        endif
+    endif
+
+    // ===== 6. Combat =====
+    if HaveTarget = 1
+        if timer 'attackref' >= 3000
+            attack noxMain
+            settimer 'attackref' 0
+        endif
+
+        if listexists 'f_arcane' and mana < 50
+            removelist 'f_arcane'
+            say '[WeaponAbility2'
+            wait 100
+            attack noxMain
+        endif
+
+        // Explosion potion every 15 seconds (only with Alchemy >= 80)
+        if skill 'Alchemy' >= 80 and timer 'explo' >= 15000 and findtype 3853 self
+            if targetexists
+                hotkey 'Cancel Current Target'
+                wait 100
+            endif
+            dclicktype 3853
+            waitfortarget 2000
+            if targetexists
+                target noxMain
+            endif
+            settimer 'explo' 0
+            wait 200
+        endif
+
+        // Poison state from the target's label
+        getlabel noxMain noxLabel
+        if "-" in noxLabel
+            wait 100
+            getlabel noxMain noxLabel
+        endif
+        @setvar! NeedPoison 1
+        if "Lethal" in noxLabel
+            @setvar! NeedPoison 0
+        elseif NoxLevel = 1 and "Deadly" in noxLabel
+            @setvar! NeedPoison 0
+        endif
+
+        @setvar! Acted 0
+
+        // a) Keep the poison up
+        if NeedPoison = 1 and mana >= 9 and findtype 3976 self and timer 'poisontry' >= 2000
+            cast 'Poison'
+            waitfortarget 2500
+            if targetexists
+                target noxMain
+            endif
+            settimer 'poisontry' 0
+            @setvar! Acted 1
+        endif
+
+        // b) Poison Strike when few ticks are left
+        if Acted = 0 and skill 'Necromancy' >= 55 and timer 'pstrike' >= 30000 and "Ticks" in noxLabel
+            @setvar! StrikeNow 0
+            if "[2" in noxLabel
+                @setvar! StrikeNow 1
+            endif
+            if StrikeTicks >= 3 and "[3" in noxLabel
+                @setvar! StrikeNow 1
+            endif
+            if StrikeTicks >= 4 and "[4" in noxLabel
+                @setvar! StrikeNow 1
+            endif
+            if StrikeTicks >= 5 and "[5" in noxLabel
+                @setvar! StrikeNow 1
+            endif
+            if StrikeNow = 1
+                say '[PoisonStrike'
+                waitfortarget 1500
+                if targetexists
+                    target noxMain
+                endif
+                wait 250
+                if insysmsg 'seconds before you may use that ability again' or insysmsg 'do not have a Spell-based poison'
+                    settimer 'pstrike' 25000
+                else
+                    settimer 'pstrike' 0
+                    overhead '[ POISON STRIKE ]' 77
+                endif
+                @setvar! Acted 1
+            endif
+        endif
+
+        // c) Necro debuffs: one per pass, at least 1 s apart
+        if Acted = 0 and timer 'necrogap' >= 1000 and mana >= 15
+            if UseCorpseSkin = 1 and skill 'Necromancy' >= 65 and timer 'corpseskin' >= 30000
+                say '[CorpseSkin'
+                wait 250
+                if insysmsg 'seconds before you may use that ability again'
+                    settimer 'corpseskin' 25000
+                else
+                    settimer 'corpseskin' 0
+                endif
+                settimer 'necrogap' 0
+                @setvar! Acted 1
+            elseif UseMindRot = 1 and skill 'Necromancy' >= 75 and not findbuff 'Mind Rot' and timer 'mindrot' >= 30000
+                say '[MindRot'
+                wait 250
+                if insysmsg 'seconds before you may use that ability again'
+                    settimer 'mindrot' 25000
+                else
+                    settimer 'mindrot' 0
+                endif
+                settimer 'necrogap' 0
+                @setvar! Acted 1
+            elseif UseEvilOmen = 1 and skill 'Necromancy' >= 60 and timer 'evilomen' >= 30000
+                say '[EvilOmen'
+                wait 250
+                if insysmsg 'seconds before you may use that ability again'
+                    settimer 'evilomen' 25000
+                else
+                    settimer 'evilomen' 0
+                endif
+                settimer 'necrogap' 0
+                @setvar! Acted 1
+            elseif UseStrangle = 1 and skill 'Necromancy' >= 85 and mana >= 50 and timer 'strangle' >= 30000
+                say '[Strangle'
+                wait 250
+                if insysmsg 'seconds before you may use that ability again'
+                    settimer 'strangle' 25000
+                else
+                    settimer 'strangle' 0
+                endif
+                settimer 'necrogap' 0
+                @setvar! Acted 1
+            endif
+        endif
+
+        // d) Mana Drain once per new enemy, then every 60 s
+        if Acted = 0
+            if not inlist 'lastdrain' noxMain
+                settimer 'manadrain' 99999
+            endif
+            if timer 'manadrain' >= 60000 and mana >= 11 and findtype 3962 self and findtype 3974 self and findtype 3981 self
+                cast 'Mana Drain'
+                waitfortarget 2000
+                if targetexists
+                    target noxMain
+                endif
+                settimer 'manadrain' 0
+                clearlist 'lastdrain'
+                pushlist 'lastdrain' noxMain
+                @setvar! Acted 1
+            endif
+        endif
+
+        // e) Damage spells, only with mana to spare
+        if Acted = 0 and mana >= NukeMana
+            if timer 'arrow' >= 15000 and findtype 3980 self
+                cast 'Magic Arrow'
+                waitfortarget 2000
+                if targetexists
+                    target noxMain
+                endif
+                settimer 'arrow' 0
+            elseif timer 'lightning' >= 15000 and findtype 3974 self and findtype 3980 self
+                cast 'Lightning'
+                waitfortarget 2000
+                if targetexists
+                    target noxMain
+                endif
+                settimer 'lightning' 0
+            elseif UseMindBlast = 1 and findtype 3962 self and findtype 3974 self and findtype 3976 self and findtype 3980 self
+                cast 'Mind Blast'
+                waitfortarget 2000
+                if targetexists
+                    target noxMain
+                endif
+            endif
+        endif
+    endif
+
+    wait 100
+endwhile
+
+if listexists 'nox_single'
+    removelist 'nox_single'
+endif
+if listexists 'f_arcane'
+    removelist 'f_arcane'
+endif
+if listexists 'f_player'
+    removelist 'f_player'
+endif
+overhead 'Single target stopped' 33
