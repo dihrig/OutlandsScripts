@@ -1,0 +1,40 @@
+// === MAX SKILL: change the number on the "while" line below ===
+
+if skill "Poisoning" < 55
+    overhead 'NEED TO MANUALLY TRAIN TO 55'
+    stop
+endif
+
+while skill "Poisoning" < 100
+
+    if poisoned
+        if findtype "Orange Potion" self
+            dclicktype "Orange Potion"
+            sysmsg "Cure pot" 55
+            wait 400
+        else
+            overhead 'OUT OF CURE POTIONS'
+            stop
+        endif
+    elseif hp = maxhp
+        if findtype "kryss" backpack as weapon
+            if skill "Poisoning" < 80
+                menu weapon 2
+                wait 4000
+            elseif skill "Poisoning" < 100
+                menu weapon 1
+                wait 4000
+            else
+                menu weapon 0
+                wait 4000
+            endif
+        else
+            overhead 'NO KRYSS FOUND'
+            stop
+        endif
+    endif
+
+    wait 250
+endwhile
+
+overhead 'MAX SKILL REACHED'

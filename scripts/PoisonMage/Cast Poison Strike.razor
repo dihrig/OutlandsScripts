@@ -1,0 +1,15 @@
+if listexists 'rotation'
+    removelist 'rotation'
+endif
+if targetexists
+    hotkey 'Cancel Current Target'
+    wait 100
+endif
+clearsysmsg
+cast 'Poison Strike'
+waitfortarget 1000
+lasttarget
+wait 200
+if insysmsg 'another Necromancy ability'
+    overhead 'Poison Strike blocked!' 33
+endif

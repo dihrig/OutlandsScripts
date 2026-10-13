@@ -1,0 +1,17 @@
+hotkey "Cancel Current target"
+hotkey '> Interrupt'
+whisper "[recall Prevalia Bank"
+wait 3000
+setvar 'banker' '0x6A'
+menu 'banker' 3
+wait 1500
+
+// Move all gold (graphic 0x0EED) from your backpack into the backpack inside the bank
+while findtype 0xEED backpack
+    lifttype 0xEED 60000
+    wait 400
+    drop 0x40A3FC8B 50 50 0
+    wait 650
+endwhile
+
+overhead 'Gold deposited' 88

@@ -1,0 +1,33 @@
+// ===== Cancel Everything =====
+// Stop a running cast first
+interrupt
+
+warmode off
+
+// Reset the toggles of Nox Single / Nox Multi, so their next key press
+// starts them again instead of only showing "OFF"
+if listexists 'nox_single'
+    removelist 'nox_single'
+endif
+if listexists 'nox_multi'
+    removelist 'nox_multi'
+endif
+
+// Clean up flags from the scripts
+if listexists 'rotation'
+    removelist 'rotation'
+endif
+if listexists 'f_arcane'
+    removelist 'f_arcane'
+endif
+if listexists 'f_player'
+    removelist 'f_player'
+endif
+if listexists 'f_lethal'
+    removelist 'f_lethal'
+endif
+
+hotkey 'Cancel Current Target'
+
+overhead 'Cancelled' 33
+stop

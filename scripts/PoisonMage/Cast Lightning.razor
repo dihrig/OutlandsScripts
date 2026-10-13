@@ -1,0 +1,10 @@
+if listexists 'rotation'
+    removelist 'rotation'
+endif
+if targetexists
+    hotkey 'Cancel Current Target'
+    wait 100
+endif
+cast 'Lightning'
+waitfortarget
+lasttarget

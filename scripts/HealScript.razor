@@ -1,0 +1,104 @@
+// ===== Heal Script =====
+// Stops Nox Single / Nox Multi cleanly, then cures and heals you.
+// One key press: cure potion / heal potion, then up to 3 spells
+// (Cure first, then Heal or Greater Heal) until you are fine.
+
+// ===== CONFIG =====
+// Heal potion from this many missing hit points (same as the Nox scripts)
+@setvar! HealPotDiff 30
+// Up to this many missing HP: fast Heal (4 mana), above: Greater Heal (11 mana)
+@setvar! SmallHealDiff 15
+
+// ===== Reset the other scripts =====
+// So their next key press starts them again instead of only showing "OFF"
+if listexists 'nox_single'
+    removelist 'nox_single'
+endif
+if listexists 'nox_multi'
+    removelist 'nox_multi'
+endif
+// Old toggle lists from the earlier scripts
+if listexists 'rotation'
+    removelist 'rotation'
+endif
+if listexists 'f_lethal'
+    removelist 'f_lethal'
+endif
+
+if not timerexists 'healpot'
+    createtimer 'healpot'
+    settimer 'healpot' 99999
+endif
+if not timerexists 'healcast'
+    createtimer 'healcast'
+    settimer 'healcast' 99999
+endif
+
+// Key pressed again while our own heal is still casting: let it finish
+if casting and timer 'healcast' < 2500
+    stop
+endif
+
+// Nothing to do
+if not poisoned and diffhits <= 5
+    stop
+endif
+
+// ===== 0. Stop whatever is being cast right now =====
+interrupt
+clearall
+wait 100
+// A Poison cursor from the Nox scripts must never land on us
+if targetexists
+    hotkey 'Cancel Current Target'
+    wait 100
+endif
+
+// ===== 1. Potions =====
+if poisoned and findtype 3847 self
+    potion 'cure'
+    wait 400
+endif
+if diffhits >= HealPotDiff and timer 'healpot' >= 10000 and findtype 3852 self
+    potion 'heal'
+    settimer 'healpot' 0
+    wait 300
+endif
+
+// ===== 2. Spells: up to 3 casts, re-checked after every cast =====
+for 3
+    if poisoned
+        // Cure: Garlic, Ginseng
+        if mana < 6 or not findtype 3972 self or not findtype 3973 self
+            overhead 'Cannot cure: mana or regs!' 33
+            break
+        endif
+        cast 'cure'
+    elseif diffhits > SmallHealDiff
+        // Greater Heal: Garlic, Ginseng, Mandrake, Spiders Silk
+        if mana < 11 or not findtype 3972 self or not findtype 3973 self or not findtype 3974 self or not findtype 3981 self
+            overhead 'Cannot heal: mana or regs!' 33
+            break
+        endif
+        cast 'greater heal'
+    elseif diffhits > 5
+        // Heal: Garlic, Ginseng, Spiders Silk
+        if mana < 4 or not findtype 3972 self or not findtype 3973 self or not findtype 3981 self
+            overhead 'Cannot heal: mana or regs!' 33
+            break
+        endif
+        cast 'heal'
+    else
+        break
+    endif
+    settimer 'healcast' 0
+    waitfortarget 3000
+    if targetexists
+        target 'self'
+    else
+        // Cast did not start (interrupted, not recovered ...)
+        break
+    endif
+    // Give HP and poison status a moment to update
+    wait 300
+endfor

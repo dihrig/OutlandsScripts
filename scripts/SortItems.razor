@@ -1,0 +1,112 @@
+// ==========================================================
+//  UO OUTLANDS - LOOT SORTER
+//  Routing list:
+//    pushlist 'routes' 'bag'      -> next entry is a destination bag
+//    pushlist 'routes' 0x........ -> bag serial (from >info: Serial)
+//    pushlist 'routes' 0x....     -> item ID   (from >info: ID)
+// ==========================================================
+
+// ---------- SOURCE ----------
+setvar 'lootbag' 0x516BB632
+
+// ---------- CONTAINERS TO OPEN (outer before inner) ----------
+@removelist 'opencont'
+createlist 'opencont'
+// Chest 1
+pushlist 'opencont' 0x49891FFE
+// Chest 1 / Bag A
+pushlist 'opencont' 0x57A47885
+// Chest 1 / Bag B
+pushlist 'opencont' 0x4073D666
+// Chest 1 / Bag C
+pushlist 'opencont' 0x4073D669
+
+// Chest 2
+pushlist 'opencont' 0x45202F9D
+// Chest 2 / Bag A
+pushlist 'opencont' 0x68905879
+// Chest 2 / Bag B
+pushlist 'opencont' 0x516BB634
+
+
+// ---------- ROUTING ----------
+@removelist 'routes'
+createlist 'routes'
+
+// --- Chest 1 / Bag A: cores ---
+pushlist 'routes' 'bag'
+pushlist 'routes' 0x57A47885
+pushlist 'routes' 3985
+
+// --- Chest 1 / Bag B: distillations ---
+pushlist 'routes' 'bag'
+pushlist 'routes' 0x4073D666
+pushlist 'routes' 17686
+pushlist 'routes' 4026
+pushlist 'routes' 3827
+
+// --- Chest 1 / Bag C: skill scrolls ---
+pushlist 'routes' 'bag'
+pushlist 'routes' 0x4073D669
+pushlist 'routes' 8826
+
+// --- Chest 2 / Bag A: gems ---
+pushlist 'routes' 'bag'
+pushlist 'routes' 0x68905879
+pushlist 'routes' 3859
+pushlist 'routes' 3865
+pushlist 'routes' 3856
+pushlist 'routes' 3873
+pushlist 'routes' 3878
+pushlist 'routes' 3861
+pushlist 'routes' 3862
+pushlist 'routes' 3877
+pushlist 'routes' 3885
+
+pushlist 'routes' 'bag'
+pushlist 'routes' 0x516BB634
+pushlist 'routes'3901
+pushlist 'routes'4225
+pushlist 'routes'7127
+pushlist 'routes'3827
+pushlist 'routes'7154
+
+
+// --- next bag ---
+// pushlist 'routes' 'bag'
+// pushlist 'routes' 0x........
+// pushlist 'routes' 0x....
+// ----------------------------------------------------------
+
+// open everything so the server sends the contents
+dclick lootbag
+wait 650
+foreach cont in 'opencont'
+    dclick cont
+    wait 650
+endfor
+
+// flag list: non-empty = the next entry is a bag serial
+@removelist 'nextisbag'
+createlist 'nextisbag'
+
+// sort
+foreach entry in 'routes'
+    if entry = 'bag'
+        pushlist 'nextisbag' 1
+    elseif list 'nextisbag' > 0
+        // bag serial -> new destination
+        @setvar! 'dest' entry
+        clearlist 'nextisbag'
+    else
+        // item ID -> move all of that type into current destination
+        while findtype entry lootbag as item
+            lift item 60000
+            wait 600
+            drop dest -1 -1 0
+            wait 600
+        endwhile
+    endif
+endfor
+
+overhead 'Loot sorted!' 68
