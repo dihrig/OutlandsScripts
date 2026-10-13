@@ -23,8 +23,8 @@ endif
 // Poison level: 1 = Deadly, 2 = Lethal
 @setvar! NoxLevel 2
 
-// Poison Strike when this many ticks or fewer are left (2 - 5)
-@setvar! StrikeTicks 3
+// Poison Strike when this many ticks or fewer are left (2 - 9)
+@setvar! StrikeTicks 5
 
 // Necro debuffs (1 = on, 0 = off)
 @setvar! UseCorpseSkin 1
@@ -510,7 +510,8 @@ while listexists 'nox_single' and not dead
         endif
 
         // b) Poison Strike when few ticks are left
-        if Acted = 0 and skill 'Necromancy' >= 55 and timer 'pstrike' >= 30000 and "Ticks" in noxLabel
+        //    Shares the 1 s gap with the necro debuffs, so they don't block each other
+        if Acted = 0 and skill 'Necromancy' >= 55 and timer 'pstrike' >= 30000 and timer 'necrogap' >= 1000 and "Ticks" in noxLabel
             @setvar! StrikeNow 0
             if "[2" in noxLabel
                 @setvar! StrikeNow 1
@@ -524,19 +525,53 @@ while listexists 'nox_single' and not dead
             if StrikeTicks >= 5 and "[5" in noxLabel
                 @setvar! StrikeNow 1
             endif
+            if StrikeTicks >= 6 and "[6" in noxLabel
+                @setvar! StrikeNow 1
+            endif
+            if StrikeTicks >= 7 and "[7" in noxLabel
+                @setvar! StrikeNow 1
+            endif
+            if StrikeTicks >= 8 and "[8" in noxLabel
+                @setvar! StrikeNow 1
+            endif
+            if StrikeTicks >= 9 and "[9" in noxLabel
+                @setvar! StrikeNow 1
+            endif
             if StrikeNow = 1
                 say '[PoisonStrike'
                 waitfortarget 1500
                 if targetexists
                     target noxMain
                 endif
-                wait 250
-                if insysmsg 'seconds before you may use that ability again' or insysmsg 'do not have a Spell-based poison'
-                    settimer 'pstrike' 25000
-                else
+                // Wait up to 1 s for the server's answer.
+                // Only "unholy symbols remaining" counts as a real hit.
+                @setvar! StrikeResult 0
+                for 10
+                    if insysmsg 'nholy symbols remaining'
+                        @setvar! StrikeResult 1
+                        break
+                    endif
+                    if insysmsg 'seconds before you may use that ability again'
+                        @setvar! StrikeResult 2
+                        break
+                    endif
+                    if insysmsg 'do not have a Spell-based poison' or insysmsg 'another Necromancy ability'
+                        @setvar! StrikeResult 3
+                        break
+                    endif
+                    wait 100
+                endfor
+                if StrikeResult = 1
                     settimer 'pstrike' 0
                     overhead '[ POISON STRIKE ]' 77
+                elseif StrikeResult = 2
+                    // Still on cooldown: try again in 5 s
+                    settimer 'pstrike' 25000
+                else
+                    // Blocked, no poison or no answer: try again in 2 s
+                    settimer 'pstrike' 28000
                 endif
+                settimer 'necrogap' 0
                 @setvar! Acted 1
             endif
         endif
