@@ -193,6 +193,12 @@ endwhile
 
 // The enemy lives in its own variable, so other target hotkeys can't move it
 @setvar! noxMain lasttarget
+// Was it already poisoned? Used to spot the moment our poison lands
+getlabel noxMain noxLabel
+@setvar! PrevTicks 0
+if "Ticks" in noxLabel
+    @setvar! PrevTicks 1
+endif
 
 if dead noxMain or not find noxMain ground -1 -1 12 or find noxMain ground -1 -1 0
     overhead 'No valid target' 33
@@ -230,6 +236,13 @@ for 5
         if NoxLanded = 1
             break
         endif
+        // Poison landed but not at the wanted level yet: recast right away
+        if insysmsg 'upgraded to'
+            break
+        endif
+        if PrevTicks = 0 and "Ticks" in noxLabel
+            break
+        endif
         if dead noxMain or not find noxMain ground -1 -1 12 or find noxMain ground -1 -1 0
             @setvar! NoxAbort 1
             break
@@ -260,6 +273,11 @@ for 5
         break
     endif
 
+    getlabel noxMain noxLabel
+    @setvar! PrevTicks 0
+    if "Ticks" in noxLabel
+        @setvar! PrevTicks 1
+    endif
     clearsysmsg
     cast 'Poison'
     for 40
@@ -522,7 +540,11 @@ while listexists 'nox_single' and not dead
         @setvar! Acted 0
 
         // a) Keep the poison up
-        if NeedPoison = 1 and mana >= 9 and findtype 3976 self and timer 'poisontry' >= 1000
+        if NeedPoison = 1 and mana >= 9 and findtype 3976 self and timer 'poisontry' >= 500
+            @setvar! PrevTicks 0
+            if "Ticks" in noxLabel
+                @setvar! PrevTicks 1
+            endif
             cast 'Poison'
             // Wait for the cursor, but stop at once if the cast was refused
             for 25
@@ -535,6 +557,24 @@ while listexists 'nox_single' and not dead
                 target noxMain
                 // Only start the timer when the cast really went off
                 settimer 'poisontry' 0
+                // Wait up to 1 s for the result, so the next pass sees the new
+                // poison level and can recast at once if it isn't high enough
+                for 10
+                    getlabel noxMain noxLabel
+                    if "Lethal" in noxLabel
+                        break
+                    endif
+                    if NoxLevel = 1 and "Deadly" in noxLabel
+                        break
+                    endif
+                    if insysmsg 'upgraded to' or insysmsg 'fizzle'
+                        break
+                    endif
+                    if PrevTicks = 0 and "Ticks" in noxLabel
+                        break
+                    endif
+                    wait 100
+                endfor
             endif
             @setvar! Acted 1
         endif
