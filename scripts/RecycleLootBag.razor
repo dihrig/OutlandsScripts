@@ -1,0 +1,80 @@
+// ==========================================================
+//  UO OUTLANDS - MAGIC ITEM RECYCLER: LOOT BAG CYCLE
+//  1. Dump Into Recycler  (everything from the loot bag)
+//  2. Identify Items      (pressed twice)
+//  3. Begin Recycle       (pressed twice: begin + confirm)
+//  4. Dump Out Recycler   (back into the loot bag)
+//  Stand within 2 tiles of the recycler.
+// ==========================================================
+
+// ---------- ADJUST THESE ----------
+setvar 'recycler' 0x48F0FC6E
+setvar 'lootbag' 0x516BB632
+
+// ---------- RECYCLER GUMP ----------
+// Gump ID 4045111101 (used by many community scripts)
+//   3 = Dump Into Recycler  -> then target the source container
+//   4 = NOT Dump Out (tested in-game, likely Dump Into Only Matching)
+//   5 = Dump Out Recycler   -> then target the destination container (confirmed in-game 2026-10-14)
+//   6 = Begin Recycle / Confirm
+//   7 = Identify Items      (confirmed in-game 2026-10-14)
+
+if targetexists
+    hotkey 'Cancel Current Target'
+endif
+
+// ---------- 1. DUMP INTO RECYCLER ----------
+dclick 'recycler'
+waitforgump 4045111101 2000
+if not gumpexists 4045111101
+    overhead 'Recycler not found - stand within 2 tiles' 34
+    stop
+endif
+overhead 'Dumping loot bag into recycler...' 88
+gumpresponse 3 4045111101
+waitfortarget 1500
+if targetexists
+    target 'lootbag'
+endif
+wait 400
+
+// ---------- 2. IDENTIFY ITEMS (x2) ----------
+// Reopen once if dumping in closed the gump, it stays open between clicks after that
+if not gumpexists 4045111101
+    dclick 'recycler'
+    waitforgump 4045111101 2000
+endif
+overhead 'Identifying...' 88
+for 2
+    gumpresponse 7 4045111101
+    waitforgump 4045111101 600
+    wait 150
+endfor
+
+// ---------- 3. BEGIN RECYCLE (x2: begin + confirm) ----------
+overhead 'Recycling...' 88
+for 2
+    gumpresponse 6 4045111101
+    waitforgump 4045111101 600
+    wait 150
+endfor
+wait 300
+
+// ---------- 4. DUMP OUT RECYCLER INTO LOOT BAG ----------
+// Each button press makes the server resend the gump, that is the flicker
+if not gumpexists 4045111101
+    dclick 'recycler'
+    waitforgump 4045111101 2000
+endif
+overhead 'Dumping recycler into loot bag...' 88
+gumpresponse 5 4045111101
+waitfortarget 2000
+if targetexists
+    target 'lootbag'
+else
+    overhead 'Dump Out gave no target - button 5 may be wrong' 34
+endif
+wait 800
+
+gumpclose 4045111101
+overhead 'Recycle cycle done!' 68
