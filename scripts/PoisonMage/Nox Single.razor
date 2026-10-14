@@ -390,7 +390,13 @@ while listexists 'nox_single' and not dead
                 wait 100
             endif
             cast 'Cure'
-            waitfortarget 2000
+            // Wait for the cursor, but stop at once if the cast was refused
+            for 20
+                if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                    break
+                endif
+                wait 100
+            endfor
             if targetexists
                 target 'self'
             endif
@@ -412,7 +418,13 @@ while listexists 'nox_single' and not dead
             wait 100
         endif
         cast 'Greater Heal'
-        waitfortarget 2500
+        // Wait for the cursor, but stop at once if the cast was refused
+        for 25
+            if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                break
+            endif
+            wait 100
+        endfor
         if targetexists
             target 'self'
         endif
@@ -510,13 +522,20 @@ while listexists 'nox_single' and not dead
         @setvar! Acted 0
 
         // a) Keep the poison up
-        if NeedPoison = 1 and mana >= 9 and findtype 3976 self and timer 'poisontry' >= 2000
+        if NeedPoison = 1 and mana >= 9 and findtype 3976 self and timer 'poisontry' >= 1000
             cast 'Poison'
-            waitfortarget 2500
+            // Wait for the cursor, but stop at once if the cast was refused
+            for 25
+                if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                    break
+                endif
+                wait 100
+            endfor
             if targetexists
                 target noxMain
+                // Only start the timer when the cast really went off
+                settimer 'poisontry' 0
             endif
-            settimer 'poisontry' 0
             @setvar! Acted 1
         endif
 
@@ -639,13 +658,20 @@ while listexists 'nox_single' and not dead
             endif
             if timer 'manadrain' >= 60000 and mana >= 11 and findtype 3962 self and findtype 3974 self and findtype 3981 self
                 cast 'Mana Drain'
-                waitfortarget 2000
+                // Wait for the cursor, but stop at once if the cast was refused
+                for 20
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
                 if targetexists
                     target noxMain
+                    // Only start the timer when the cast really went off
+                    settimer 'manadrain' 0
+                    clearlist 'lastdrain'
+                    pushlist 'lastdrain' noxMain
                 endif
-                settimer 'manadrain' 0
-                clearlist 'lastdrain'
-                pushlist 'lastdrain' noxMain
                 @setvar! Acted 1
             endif
         endif
@@ -657,13 +683,20 @@ while listexists 'nox_single' and not dead
             endif
             if timer 'curse' >= 120000 and mana >= 11 and findtype 3972 self and findtype 3976 self and findtype 3980 self
                 cast 'Curse'
-                waitfortarget 2000
+                // Wait for the cursor, but stop at once if the cast was refused
+                for 20
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
                 if targetexists
                     target noxMain
+                    // Only start the timer when the cast really went off
+                    settimer 'curse' 0
+                    clearlist 'lastcurse'
+                    pushlist 'lastcurse' noxMain
                 endif
-                settimer 'curse' 0
-                clearlist 'lastcurse'
-                pushlist 'lastcurse' noxMain
                 @setvar! Acted 1
             endif
         endif
@@ -672,21 +705,41 @@ while listexists 'nox_single' and not dead
         if Acted = 0 and mana >= NukeMana
             if timer 'arrow' >= 15000 and findtype 3980 self
                 cast 'Magic Arrow'
-                waitfortarget 2000
+                // Wait for the cursor, but stop at once if the cast was refused
+                for 20
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
                 if targetexists
                     target noxMain
+                    // Only start the timer when the cast really went off
+                    settimer 'arrow' 0
                 endif
-                settimer 'arrow' 0
             elseif timer 'lightning' >= 15000 and findtype 3974 self and findtype 3980 self
                 cast 'Lightning'
-                waitfortarget 2000
+                // Wait for the cursor, but stop at once if the cast was refused
+                for 20
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
                 if targetexists
                     target noxMain
+                    // Only start the timer when the cast really went off
+                    settimer 'lightning' 0
                 endif
-                settimer 'lightning' 0
             elseif UseMindBlast = 1 and findtype 3962 self and findtype 3974 self and findtype 3976 self and findtype 3980 self
                 cast 'Mind Blast'
-                waitfortarget 2000
+                // Wait for the cursor, but stop at once if the cast was refused
+                for 20
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
                 if targetexists
                     target noxMain
                 endif
