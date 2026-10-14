@@ -15,8 +15,7 @@ setvar 'lootbag' 0x516BB632
 // Gump ID 4045111101 (used by many community scripts)
 //   3 = Dump Into Recycler  -> then target the source container
 //   4 = NOT Dump Out (tested in-game, likely Dump Into Only Matching)
-//   5 = Dump Out Recycler   -> then target the destination container
-//       <- CHECK IN-GAME: inferred from the button order, not confirmed
+//   5 = Dump Out Recycler   -> then target the destination container (confirmed in-game 2026-10-14)
 //   6 = Begin Recycle / Confirm
 //   7 = Identify Items      (confirmed in-game 2026-10-14)
 
@@ -62,11 +61,11 @@ endfor
 wait 1000
 
 // ---------- 4. DUMP OUT RECYCLER INTO LOOT BAG ----------
-// Reopen the recycler fresh so the Dump Out button is on a clean gump
-gumpclose 4045111101
-wait 500
-dclick 'recycler'
-waitforgump 4045111101 2000
+// Each button press makes the server resend the gump, that is the flicker
+if not gumpexists 4045111101
+    dclick 'recycler'
+    waitforgump 4045111101 2000
+endif
 overhead 'Dumping recycler into loot bag...' 88
 gumpresponse 5 4045111101
 waitfortarget 2000
