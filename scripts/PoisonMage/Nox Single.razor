@@ -6,7 +6,7 @@
 // Phase 1: fast Poison casts until the wanted level lands
 // Phase 2: rotation on that one target, one action per pass:
 //   escape > heals/cures > keep poison up > Poison Strike >
-//   necro debuffs > Mana Drain > damage spells
+//   necro debuffs > Mana Drain > Curse > damage spells
 // ==========================================================
 
 // ===== CONFIG =====
@@ -31,6 +31,9 @@ endif
 @setvar! UseMindRot 1
 @setvar! UseEvilOmen 1
 @setvar! UseStrangle 0
+
+// Curse on each new enemy, then every 2 minutes (1 = on, 0 = off)
+@setvar! UseCurse 1
 
 // Damage spells only above this mana (keeps mana for Poison and heals)
 @setvar! NukeMana 40
@@ -75,11 +78,19 @@ endif
 if not listexists 'lastdrain'
     createlist 'lastdrain'
 endif
+// Remembers the last cursed enemy (kept between runs)
+if not listexists 'lastcurse'
+    createlist 'lastcurse'
+endif
 
 // ===== Timers (99999 = ready immediately) =====
 if not timerexists 'manadrain'
     createtimer 'manadrain'
     settimer 'manadrain' 99999
+endif
+if not timerexists 'curse'
+    createtimer 'curse'
+    settimer 'curse' 999999
 endif
 if not timerexists 'arrow'
     createtimer 'arrow'
@@ -639,7 +650,25 @@ while listexists 'nox_single' and not dead
             endif
         endif
 
-        // e) Damage spells, only with mana to spare
+        // e) Curse once per new enemy, then every 2 minutes
+        if Acted = 0 and UseCurse = 1
+            if not inlist 'lastcurse' noxMain
+                settimer 'curse' 999999
+            endif
+            if timer 'curse' >= 120000 and mana >= 11 and findtype 3972 self and findtype 3976 self and findtype 3980 self
+                cast 'Curse'
+                waitfortarget 2000
+                if targetexists
+                    target noxMain
+                endif
+                settimer 'curse' 0
+                clearlist 'lastcurse'
+                pushlist 'lastcurse' noxMain
+                @setvar! Acted 1
+            endif
+        endif
+
+        // f) Damage spells, only with mana to spare
         if Acted = 0 and mana >= NukeMana
             if timer 'arrow' >= 15000 and findtype 3980 self
                 cast 'Magic Arrow'
