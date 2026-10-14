@@ -14,8 +14,9 @@ setvar 'lootbag' 0x516BB632
 // ---------- RECYCLER GUMP ----------
 // Gump ID 4045111101 (used by many community scripts)
 //   3 = Dump Into Recycler  -> then target the source container
-//   4 = Dump Out Recycler   -> then target the destination container
-//       <- CHECK IN-GAME: did not work on the first test
+//   4 = NOT Dump Out (tested in-game, likely Dump Into Only Matching)
+//   5 = Dump Out Recycler   -> then target the destination container
+//       <- CHECK IN-GAME: inferred from the button order, not confirmed
 //   6 = Begin Recycle / Confirm
 //   7 = Identify Items      (confirmed in-game 2026-10-14)
 
@@ -67,12 +68,12 @@ wait 500
 dclick 'recycler'
 waitforgump 4045111101 2000
 overhead 'Dumping recycler into loot bag...' 88
-gumpresponse 4 4045111101
+gumpresponse 5 4045111101
 waitfortarget 2000
 if targetexists
     target 'lootbag'
 else
-    overhead 'Dump Out gave no target - button 4 may be wrong' 34
+    overhead 'Dump Out gave no target - button 5 may be wrong' 34
 endif
 wait 800
 
