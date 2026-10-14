@@ -9,6 +9,8 @@
 // Pets are sent at one mob at a time.
 // Note: the scan has to cycle your target highlight - that
 // is the only way Razor can read a mob's poison state.
+// It starts at the closest mob and skips anything farther
+// than ScanRange.
 // ==========================================================
 
 // ===== CONFIG =====
@@ -26,7 +28,8 @@ endif
 // poison, upcast the weaker ones to Lethal (1 = on, 0 = off)
 @setvar! UpcastLethal 1
 
-// Only mobs within this many tiles (max 12 for spells)
+// Only mobs within this many tiles are poisoned (max 12 for spells).
+// If even the closest mob is farther, the scan stops at once.
 @setvar! ScanRange 10
 
 // Poison Strike on mobs with this many ticks or fewer left (2 - 5), 0 = off
@@ -248,17 +251,41 @@ while listexists 'nox_multi' and not dead
     endif
 
     // ===== 5. Scan the mobs in range =====
+    // Step 1 takes the closest grey monster. If even that one is farther
+    // than ScanRange, nothing is in range and the scan stops right there.
+    // Later steps cycle 'Next Grey Monster Target', which goes through
+    // every mob on screen in no particular order, near or far. Far mobs
+    // are skipped, and the scan stops once the cycle comes back round.
     @setvar! PoisonT 0
     @setvar! UpcastT 0
     @setvar! StrikeT 0
     @setvar! FirstMob 0
-    for 6
-        hotkey 'Next Grey Monster Target'
+    @setvar! scanStep 0
+    @setvar! FirstNext 0
+    for 10
+        if scanStep = 0
+            hotkey 'Target Closest Grey Monster'
+        else
+            hotkey 'Next Grey Monster Target'
+        endif
         wait 50
         if insysmsg 'No one matching'
             break
         endif
         @setvar! scanC lasttarget
+        if scanStep = 0
+            @setvar! scanStep 1
+            if not find scanC ground -1 -1 ScanRange
+                // the closest mob is already too far
+                break
+            endif
+        elseif scanStep = 1
+            @setvar! scanStep 2
+            @setvar! FirstNext scanC
+        elseif scanC = FirstNext
+            // back at the start of the cycle: every mob has been seen
+            break
+        endif
         if find scanC ground -1 -1 ScanRange and not dead scanC and not find scanC ground -1 -1 0
             getlabel scanC scanLabel
             if "-" in scanLabel
