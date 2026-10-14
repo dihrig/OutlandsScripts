@@ -132,6 +132,10 @@ if not timerexists 'poisontry'
     createtimer 'poisontry'
     settimer 'poisontry' 99999
 endif
+if not timerexists 'lethalseen'
+    createtimer 'lethalseen'
+    settimer 'lethalseen' 0
+endif
 if not timerexists 'pstrike'
     createtimer 'pstrike'
     settimer 'pstrike' 99999
@@ -211,38 +215,28 @@ if followers > 0
     endif
 endif
 
-// Fast opening: recast until the level is reached (max 5 casts)
-for 5
-    // Wait up to 1 s for the result: journal AND target label
-    for 10
-        getlabel noxMain noxLabel
-        if "Lethal" in noxLabel
-            @setvar! NoxLanded 1
-        elseif NoxLevel = 1 and "Deadly" in noxLabel
-            @setvar! NoxLanded 1
-        endif
-        if insysmsg 'upgraded to lethal'
-            @setvar! NoxLanded 1
-        endif
-        if NoxLevel = 1 and insysmsg 'upgraded to deadly'
-            @setvar! NoxLanded 1
-        endif
-        if NoxLanded = 1
-            break
-        endif
-        if dead noxMain or not find noxMain ground -1 -1 12 or find noxMain ground -1 -1 0
-            @setvar! NoxAbort 1
-            break
-        endif
-        if insysmsg 'cannot be seen' or insysmsg 'too far away'
-            @setvar! NoxAbort 1
-            break
-        endif
-        if insysmsg 'fizzle' or insysmsg 'recovered'
-            break
-        endif
-        wait 100
-    endfor
+// Fast opening: Poison back to back until the label shows the wanted level.
+// No waiting for each result - one extra cast after it lands is fine.
+for 12
+    // Quick check of the result so far: journal AND target label
+    getlabel noxMain noxLabel
+    if "Lethal" in noxLabel
+        @setvar! NoxLanded 1
+    elseif NoxLevel = 1 and "Deadly" in noxLabel
+        @setvar! NoxLanded 1
+    endif
+    if insysmsg 'upgraded to lethal'
+        @setvar! NoxLanded 1
+    endif
+    if NoxLevel = 1 and insysmsg 'upgraded to deadly'
+        @setvar! NoxLanded 1
+    endif
+    if dead noxMain or not find noxMain ground -1 -1 12 or find noxMain ground -1 -1 0
+        @setvar! NoxAbort 1
+    endif
+    if insysmsg 'cannot be seen' or insysmsg 'too far away'
+        @setvar! NoxAbort 1
+    endif
     if NoxLanded = 1 or NoxAbort = 1
         break
     endif
@@ -288,6 +282,9 @@ for 5
             break
         endif
         target noxMain
+    else
+        // Refused (still recovering): short pause, then try again
+        wait 100
     endif
 endfor
 
@@ -308,6 +305,7 @@ if not listexists 'cfg_escape'
     overhead 'Rotating ! (escape OFF)' 68
 endif
 clearsysmsg
+settimer 'lethalseen' 0
 
 while listexists 'nox_single' and not dead
 
@@ -390,7 +388,13 @@ while listexists 'nox_single' and not dead
                 wait 100
             endif
             cast 'Cure'
-            waitfortarget 2000
+            // Wait for the cursor, but stop at once if the cast was refused
+            for 20
+                if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                    break
+                endif
+                wait 100
+            endfor
             if targetexists
                 target 'self'
             endif
@@ -412,7 +416,13 @@ while listexists 'nox_single' and not dead
             wait 100
         endif
         cast 'Greater Heal'
-        waitfortarget 2500
+        // Wait for the cursor, but stop at once if the cast was refused
+        for 25
+            if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                break
+            endif
+            wait 100
+        endfor
         if targetexists
             target 'self'
         endif
@@ -452,6 +462,7 @@ while listexists 'nox_single' and not dead
         else
             @setvar! noxMain noxCand
             @setvar! HaveTarget 1
+            settimer 'lethalseen' 0
             attack noxMain
             settimer 'attackref' 0
             if followers > 0
@@ -506,18 +517,35 @@ while listexists 'nox_single' and not dead
         elseif NoxLevel = 1 and "Deadly" in noxLabel
             @setvar! NeedPoison 0
         endif
+        if NeedPoison = 0
+            settimer 'lethalseen' 0
+        endif
 
         @setvar! Acted 0
 
-        // a) Keep the poison up
-        if NeedPoison = 1 and mana >= 9 and findtype 3976 self and timer 'poisontry' >= 2000
-            cast 'Poison'
-            waitfortarget 2500
-            if targetexists
-                target noxMain
+        // a) Keep the poison up. Poison is cast back to back until the label
+        //    shows the wanted level (one extra cast after it lands is fine).
+        //    If it never gets there (immune / resisting target), back off to
+        //    one Poison every 5 s so the other spells still get cast.
+        if NeedPoison = 1 and mana >= 9 and findtype 3976 self
+            if timer 'lethalseen' < 8000 or timer 'poisontry' >= 5000
+                cast 'Poison'
+                // Wait for the cursor, but stop at once if the cast was refused
+                for 25
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
+                if targetexists
+                    target noxMain
+                    settimer 'poisontry' 0
+                else
+                    // Refused (still recovering): short pause, then try again
+                    wait 100
+                endif
+                @setvar! Acted 1
             endif
-            settimer 'poisontry' 0
-            @setvar! Acted 1
         endif
 
         // b) Poison Strike when few ticks are left
@@ -639,13 +667,20 @@ while listexists 'nox_single' and not dead
             endif
             if timer 'manadrain' >= 60000 and mana >= 11 and findtype 3962 self and findtype 3974 self and findtype 3981 self
                 cast 'Mana Drain'
-                waitfortarget 2000
+                // Wait for the cursor, but stop at once if the cast was refused
+                for 20
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
                 if targetexists
                     target noxMain
+                    // Only start the timer when the cast really went off
+                    settimer 'manadrain' 0
+                    clearlist 'lastdrain'
+                    pushlist 'lastdrain' noxMain
                 endif
-                settimer 'manadrain' 0
-                clearlist 'lastdrain'
-                pushlist 'lastdrain' noxMain
                 @setvar! Acted 1
             endif
         endif
@@ -657,13 +692,20 @@ while listexists 'nox_single' and not dead
             endif
             if timer 'curse' >= 120000 and mana >= 11 and findtype 3972 self and findtype 3976 self and findtype 3980 self
                 cast 'Curse'
-                waitfortarget 2000
+                // Wait for the cursor, but stop at once if the cast was refused
+                for 20
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
                 if targetexists
                     target noxMain
+                    // Only start the timer when the cast really went off
+                    settimer 'curse' 0
+                    clearlist 'lastcurse'
+                    pushlist 'lastcurse' noxMain
                 endif
-                settimer 'curse' 0
-                clearlist 'lastcurse'
-                pushlist 'lastcurse' noxMain
                 @setvar! Acted 1
             endif
         endif
@@ -672,21 +714,41 @@ while listexists 'nox_single' and not dead
         if Acted = 0 and mana >= NukeMana
             if timer 'arrow' >= 15000 and findtype 3980 self
                 cast 'Magic Arrow'
-                waitfortarget 2000
+                // Wait for the cursor, but stop at once if the cast was refused
+                for 20
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
                 if targetexists
                     target noxMain
+                    // Only start the timer when the cast really went off
+                    settimer 'arrow' 0
                 endif
-                settimer 'arrow' 0
             elseif timer 'lightning' >= 15000 and findtype 3974 self and findtype 3980 self
                 cast 'Lightning'
-                waitfortarget 2000
+                // Wait for the cursor, but stop at once if the cast was refused
+                for 20
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
                 if targetexists
                     target noxMain
+                    // Only start the timer when the cast really went off
+                    settimer 'lightning' 0
                 endif
-                settimer 'lightning' 0
             elseif UseMindBlast = 1 and findtype 3962 self and findtype 3974 self and findtype 3976 self and findtype 3980 self
                 cast 'Mind Blast'
-                waitfortarget 2000
+                // Wait for the cursor, but stop at once if the cast was refused
+                for 20
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
                 if targetexists
                     target noxMain
                 endif
