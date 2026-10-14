@@ -36,7 +36,7 @@ waitfortarget 1500
 if targetexists
     target 'lootbag'
 endif
-wait 800
+wait 400
 
 // ---------- 2. IDENTIFY ITEMS (x2) ----------
 // Reopen once if dumping in closed the gump, it stays open between clicks after that
@@ -47,18 +47,18 @@ endif
 overhead 'Identifying...' 88
 for 2
     gumpresponse 7 4045111101
-    waitforgump 4045111101 1500
-    wait 400
+    waitforgump 4045111101 600
+    wait 150
 endfor
 
 // ---------- 3. BEGIN RECYCLE (x2: begin + confirm) ----------
 overhead 'Recycling...' 88
 for 2
     gumpresponse 6 4045111101
-    waitforgump 4045111101 1500
-    wait 400
+    waitforgump 4045111101 600
+    wait 150
 endfor
-wait 1000
+wait 300
 
 // ---------- 4. DUMP OUT RECYCLER INTO LOOT BAG ----------
 // Each button press makes the server resend the gump, that is the flicker
