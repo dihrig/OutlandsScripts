@@ -7,6 +7,7 @@
 //           2. Poison Strike on a mob with few ticks left
 //           3. upcast poisoned mobs to Lethal
 // Pets are sent at one mob at a time.
+// Leyline is used on cooldown while mobs are in range.
 // Note: the scan has to cycle your target highlight - that
 // is the only way Razor can read a mob's poison state.
 // ==========================================================
@@ -38,6 +39,14 @@ endif
 // Send summons at one mob at a time (1 = on, 0 = off)
 @setvar! PetsAttack 1
 
+// Leyline (Arcane weapon ability 2) on cooldown (1 = on, 0 = off)
+@setvar! UseLeyline 1
+// Wait this long after Leyline went off before trying again (ms).
+// 60000 comes from community scripts - CHECK IN-GAME: if your Leyline
+// cooldown bar is shorter, lower this. A try that is still on cooldown
+// is simply retried 3 s later.
+@setvar! LeylineCD 60000
+
 // Heal thresholds (missing hit points)
 @setvar! HealPotDiff 30
 @setvar! GreaterHealDiff 30
@@ -59,6 +68,9 @@ createlist 'nox_multi'
 
 if listexists 'f_player'
     removelist 'f_player'
+endif
+if listexists 'f_leytry'
+    removelist 'f_leytry'
 endif
 if targetexists
     hotkey 'Cancel Current Target'
@@ -109,6 +121,14 @@ if not timerexists 'mindrot'
     createtimer 'mindrot'
     settimer 'mindrot' 99999
 endif
+if not timerexists 'leyline'
+    createtimer 'leyline'
+    settimer 'leyline' 99999
+endif
+if not timerexists 'leytry'
+    createtimer 'leytry'
+    settimer 'leytry' 99999
+endif
 if not timerexists 'idlemsg'
     createtimer 'idlemsg'
     settimer 'idlemsg' 99999
@@ -124,6 +144,15 @@ while listexists 'nox_multi' and not dead
     endif
     if insysmsg 'consume a magic mushroom'
         settimer 'mushroom' 0
+    endif
+    // Did the last Leyline try go off? Refused = still on cooldown, retry in 3 s
+    if listexists 'f_leytry'
+        removelist 'f_leytry'
+        if insysmsg 'cannot perform that ability yet'
+            // still on cooldown
+        else
+            settimer 'leyline' 0
+        endif
     endif
 
     // ===== 2. Clear once, after everything has been read =====
@@ -143,6 +172,9 @@ while listexists 'nox_multi' and not dead
         hotkey '> Interrupt'
         whisper '[recall Guild Hall'
         removelist 'nox_multi'
+        if listexists 'f_leytry'
+            removelist 'f_leytry'
+        endif
         stop
     endif
 
@@ -324,7 +356,18 @@ while listexists 'nox_multi' and not dead
         endif
     endif
 
-    // ===== 7. Act =====
+    // ===== 7. Leyline =====
+    // Leyline on cooldown. Only while mobs are in range.
+    // Not a spell, so it never blocks a cast.
+    if FirstMob != 0 and UseLeyline = 1 and timer 'leyline' >= LeylineCD and timer 'leytry' >= 3000
+        say '[WeaponAbility2'
+        settimer 'leytry' 0
+        if not listexists 'f_leytry'
+            createlist 'f_leytry'
+        endif
+    endif
+
+    // ===== 8. Act =====
     if PoisonT != 0 and mana >= 9 and findtype 3976 self
         cast 'Poison'
         // Wait for the cursor, but stop at once if the cast was refused
@@ -405,5 +448,8 @@ if listexists 'nox_multi'
 endif
 if listexists 'f_player'
     removelist 'f_player'
+endif
+if listexists 'f_leytry'
+    removelist 'f_leytry'
 endif
 overhead 'Multi target stopped' 33

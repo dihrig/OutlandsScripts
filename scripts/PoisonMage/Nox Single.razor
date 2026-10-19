@@ -5,7 +5,7 @@
 //
 // Phase 1: fast Poison casts until the wanted level lands
 // Phase 2: rotation on that one target, one action per pass:
-//   escape > heals/cures > keep poison up > Poison Strike >
+//   escape > heals/cures > Leyline > keep poison up > Poison Strike >
 //   necro debuffs > Mana Drain > Curse > damage spells
 // ==========================================================
 
@@ -40,6 +40,14 @@ endif
 // Mind Blast as filler (1 = on, 0 = off)
 @setvar! UseMindBlast 1
 
+// Leyline (Arcane weapon ability 2) on cooldown (1 = on, 0 = off)
+@setvar! UseLeyline 1
+// Wait this long after Leyline went off before trying again (ms).
+// 60000 comes from community scripts - CHECK IN-GAME: if your Leyline
+// cooldown bar is shorter, lower this. A try that is still on cooldown
+// is simply retried 3 s later.
+@setvar! LeylineCD 60000
+
 // Heal thresholds (missing hit points)
 @setvar! HealPotDiff 30
 @setvar! GreaterHealDiff 30
@@ -63,8 +71,8 @@ endif
 createlist 'nox_single'
 
 // Reset state flags from any previous run
-if listexists 'f_arcane'
-    removelist 'f_arcane'
+if listexists 'f_leytry'
+    removelist 'f_leytry'
 endif
 if listexists 'f_player'
     removelist 'f_player'
@@ -159,6 +167,14 @@ endif
 if not timerexists 'necrogap'
     createtimer 'necrogap'
     settimer 'necrogap' 99999
+endif
+if not timerexists 'leyline'
+    createtimer 'leyline'
+    settimer 'leyline' 99999
+endif
+if not timerexists 'leytry'
+    createtimer 'leytry'
+    settimer 'leytry' 99999
 endif
 if not timerexists 'attackref'
     createtimer 'attackref'
@@ -315,9 +331,13 @@ while listexists 'nox_single' and not dead
             createlist 'f_player'
         endif
     endif
-    if insysmsg '100% arcane buildup'
-        if not listexists 'f_arcane'
-            createlist 'f_arcane'
+    // Did the last Leyline try go off? Refused = still on cooldown, retry in 3 s
+    if listexists 'f_leytry'
+        removelist 'f_leytry'
+        if insysmsg 'cannot perform that ability yet'
+            // still on cooldown
+        else
+            settimer 'leyline' 0
         endif
     endif
     if insysmsg 'consume a magic mushroom'
@@ -341,8 +361,8 @@ while listexists 'nox_single' and not dead
         hotkey '> Interrupt'
         whisper '[recall Guild Hall'
         removelist 'nox_single'
-        if listexists 'f_arcane'
-            removelist 'f_arcane'
+        if listexists 'f_leytry'
+            removelist 'f_leytry'
         endif
         stop
     endif
@@ -483,9 +503,13 @@ while listexists 'nox_single' and not dead
             settimer 'attackref' 0
         endif
 
-        if listexists 'f_arcane' and mana < 50
-            removelist 'f_arcane'
+        // Leyline on cooldown. Not a spell, so it never blocks a cast.
+        if UseLeyline = 1 and timer 'leyline' >= LeylineCD and timer 'leytry' >= 3000
             say '[WeaponAbility2'
+            settimer 'leytry' 0
+            if not listexists 'f_leytry'
+                createlist 'f_leytry'
+            endif
             wait 100
             attack noxMain
         endif
@@ -762,8 +786,8 @@ endwhile
 if listexists 'nox_single'
     removelist 'nox_single'
 endif
-if listexists 'f_arcane'
-    removelist 'f_arcane'
+if listexists 'f_leytry'
+    removelist 'f_leytry'
 endif
 if listexists 'f_player'
     removelist 'f_player'
