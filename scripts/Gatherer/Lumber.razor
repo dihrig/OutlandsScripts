@@ -1,0 +1,101 @@
+# Auto Lumberjack with Player Escape
+# Based on Bigguns Simple Jacker (outlands.uorazorscripts.com)
+#
+# What it does:
+# - Chops with "Use Item in Hand" and waits for the chop result in the journal
+# - Keeps Tracking up on "all hostile players"
+# - Runs GatherBank when a tracked player shows up
+# - Runs GatherBank when you are nearly overweight
+#
+# Requirements:
+# - Hatchet equipped (spare hatchets in backpack get equipped automatically)
+# - GatherBank script in the Gatherer category of your Razor scripts
+#
+# Note: "script" hands control to GatherBank, so this script ends there.
+# Walk back and restart it after banking.
+
+# ---- Settings (adjust these) ----
+# Bank when fewer than this many stones of carrying capacity are left
+@setvar! minFreeWeight 30
+
+clearsysmsg
+while not dead
+
+    # 1. Tracking upkeep (gump 4267467659, button 8 cycles the mode, 6 confirms)
+    if not findbuff 'Tracking'
+        if gumpexists 4267467659
+            gumpclose 4267467659
+        endif
+        clearsysmsg
+        useskill 'Tracking'
+        waitforgump 4267467659 2000
+        if gumpexists 4267467659
+            for 10
+                if insysmsg 'You will now hunt all hostile players'
+                    break
+                endif
+                gumpresponse 8 4267467659
+                waitforgump 4267467659 2000
+            endfor
+            gumpresponse 6 4267467659
+            wait 500
+        endif
+        if gumpexists 4267467659
+            gumpclose 4267467659
+        endif
+    endif
+
+    # 2. Player check (any tracked player at any distance)
+    if insysmsg 'Now tracking' or insysmsg ' spaces'
+        overhead 'PLAYER CLOSE! ESCAPING!' 38
+        script 'Gatherer\GatherBank'
+        stop
+    endif
+
+    # 3. Weight check
+    if diffweight < minFreeWeight
+        overhead 'Overweight. Banking...' 55
+        script 'Gatherer\GatherBank'
+        stop
+    endif
+
+    # 4. Make sure a hatchet is equipped
+    if lhandempty and rhandempty
+        if findtype 'hatchet' backpack
+            dclicktype 'hatchet' backpack
+            wait 600
+        else
+            overhead 'No hatchet! Stopping.' 38
+            stop
+        endif
+    endif
+
+    # 5. Chop and wait for the result (up to about 7 seconds)
+    clearsysmsg
+    hotkey 'Use Item in Hand'
+    wft 1000
+    if targetexists
+        target 'self'
+    endif
+
+    for 70
+        wait 100
+        if insysmsg 'Now tracking' or insysmsg ' spaces'
+            break
+        elseif insysmsg 'You chop' or insysmsg 'You hack'
+            break
+        elseif insysmsg 'You do not see any' or insysmsg 'You cannot produce any wood'
+            overhead 'Move to next spot' 88
+            wait 2000
+            break
+        elseif insysmsg 'You must wait'
+            wait 500
+            break
+        elseif insysmsg 'world is saving'
+            overhead 'Waiting for world save...' 55
+            wait 5000
+            break
+        endif
+    endfor
+
+endwhile
