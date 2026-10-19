@@ -1,0 +1,397 @@
+// ==========================================================
+// Nox Single Mage - pure mage single target rotation (no Necromancy,
+// no Poison, no Tracking)
+// Press the hotkey: a target cursor appears, click your enemy.
+// Press again to stop.
+//
+// Rotation on that one target, one action per pass:
+//   heals/cures > Mana Drain >
+//   Harm (every 15 s) > Magic Arrow / Lightning > Mind Blast (filler)
+// ==========================================================
+
+// ===== CONFIG =====
+// Damage spells only at or above this mana.
+// 11 = cast until the mana for one more Mind Blast or Lightning is gone.
+// Raise it (e.g. 22) to always keep a Greater Heal in reserve.
+@setvar! NukeMana 11
+// Harm (1 = on, 0 = off) and its cooldown in ms
+@setvar! UseHarm 1
+@setvar! HarmEvery 15000
+// Mind Blast as filler (1 = on, 0 = off)
+@setvar! UseMindBlast 1
+
+// Heal thresholds (missing hit points)
+@setvar! HealPotDiff 30
+@setvar! GreaterHealDiff 30
+
+// When the target dies: 1 = take the closest grey monster, 0 = stop
+@setvar! AutoNext 1
+
+// ===== Toggle =====
+// Shares its on/off switch with Nox Single, so only one of them runs.
+// The multi target script can't be running at the same time either.
+if listexists 'nox_multi'
+    removelist 'nox_multi'
+endif
+if listexists 'nox_single'
+    removelist 'nox_single'
+    if targetexists
+        hotkey 'Cancel Current Target'
+    endif
+    overhead 'Single target OFF' 33
+    stop
+endif
+createlist 'nox_single'
+
+// Reset state flags from any previous run
+if listexists 'f_arcane'
+    removelist 'f_arcane'
+endif
+if targetexists
+    hotkey 'Cancel Current Target'
+    wait 100
+endif
+
+// Remembers the last mana-drained enemy (kept between runs)
+if not listexists 'lastdrain'
+    createlist 'lastdrain'
+endif
+
+// ===== Timers (99999 = ready immediately) =====
+if not timerexists 'manadrain'
+    createtimer 'manadrain'
+    settimer 'manadrain' 99999
+endif
+if not timerexists 'harm'
+    createtimer 'harm'
+    settimer 'harm' 99999
+endif
+if not timerexists 'arrow'
+    createtimer 'arrow'
+    settimer 'arrow' 99999
+endif
+if not timerexists 'lightning'
+    createtimer 'lightning'
+    settimer 'lightning' 99999
+endif
+if not timerexists 'healpot'
+    createtimer 'healpot'
+    settimer 'healpot' 99999
+endif
+if not timerexists 'curepot'
+    createtimer 'curepot'
+    settimer 'curepot' 99999
+endif
+if not timerexists 'gheal'
+    createtimer 'gheal'
+    settimer 'gheal' 99999
+endif
+if not timerexists 'mushroom'
+    createtimer 'mushroom'
+    settimer 'mushroom' 99999
+endif
+if not timerexists 'mushtry'
+    createtimer 'mushtry'
+    settimer 'mushtry' 99999
+endif
+if not timerexists 'explo'
+    createtimer 'explo'
+    settimer 'explo' 99999
+endif
+if not timerexists 'attackref'
+    createtimer 'attackref'
+    settimer 'attackref' 99999
+endif
+
+// ==========================================================
+// Pick the target
+// ==========================================================
+overhead 'Select enemy' 68
+// No value = Razor opens a target cursor and waits for your click
+setvar noxMain
+
+if dead noxMain or not find noxMain ground -1 -1 12 or find noxMain ground -1 -1 0
+    overhead 'No valid target' 33
+    removelist 'nox_single'
+    stop
+endif
+
+warmode on
+attack noxMain
+settimer 'attackref' 0
+if followers > 0
+    say 'All kill'
+    waitfortarget 1500
+    if targetexists
+        target noxMain
+    endif
+endif
+
+// ==========================================================
+// Rotation
+// ==========================================================
+overhead 'Rotating !' 68
+clearsysmsg
+
+while listexists 'nox_single' and not dead
+
+    // ===== 1. Read the journal into flags =====
+    if insysmsg '100% arcane buildup'
+        if not listexists 'f_arcane'
+            createlist 'f_arcane'
+        endif
+    endif
+    if insysmsg 'consume a magic mushroom'
+        settimer 'mushroom' 0
+    endif
+
+    // ===== 2. Clear once, after everything has been read =====
+    clearsysmsg
+
+    // A stray cursor must never be used by a self-target spell
+    if targetexists
+        hotkey 'Cancel Current Target'
+        wait 100
+    endif
+
+    // ===== 3. Defensive =====
+    if diffhits >= HealPotDiff and timer 'healpot' >= 10000 and findtype 3852 self
+        dclicktype 3852
+        settimer 'healpot' 0
+        wait 200
+    endif
+
+    if poisoned and timer 'curepot' >= 2000
+        if findtype 3847 self
+            dclicktype 3847
+            settimer 'curepot' 0
+            wait 200
+        elseif mana >= 6 and findtype 3972 self and findtype 3973 self
+            // Wait for a running cast to finish and drop any stray cursor,
+            // so 'target self' can only ever answer this heal/cure
+            for 25
+                if not casting
+                    break
+                endif
+                wait 100
+            endfor
+            if targetexists
+                hotkey 'Cancel Current Target'
+                wait 100
+            endif
+            cast 'Cure'
+            // Wait for the cursor, but stop at once if the cast was refused
+            for 20
+                if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                    break
+                endif
+                wait 100
+            endfor
+            if targetexists
+                target 'self'
+            endif
+            settimer 'curepot' 0
+        endif
+    endif
+
+    if diffhits >= GreaterHealDiff and mana >= 11 and timer 'gheal' >= 2500 and findtype 3972 self and findtype 3973 self and findtype 3974 self and findtype 3981 self
+        // Wait for a running cast to finish and drop any stray cursor,
+        // so 'target self' can only ever answer this heal/cure
+        for 25
+            if not casting
+                break
+            endif
+            wait 100
+        endfor
+        if targetexists
+            hotkey 'Cancel Current Target'
+            wait 100
+        endif
+        cast 'Greater Heal'
+        // Wait for the cursor, but stop at once if the cast was refused
+        for 25
+            if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                break
+            endif
+            wait 100
+        endfor
+        if targetexists
+            target 'self'
+        endif
+        settimer 'gheal' 0
+    endif
+
+    if mana < 50 and timer 'mushroom' >= 60000
+        if timer 'mushtry' >= 3000
+            dclicktype 29012
+            settimer 'mushtry' 0
+            wait 200
+        endif
+    endif
+
+    // ===== 4. Target still alive? =====
+    @setvar! HaveTarget 1
+    if dead noxMain or not find noxMain ground -1 -1 12 or find noxMain ground -1 -1 0
+        @setvar! HaveTarget 0
+        if AutoNext = 0
+            overhead 'Target gone - stopped' 53
+            removelist 'nox_single'
+            stop
+        endif
+        hotkey 'Target Closest Grey Monster'
+        wait 150
+        if insysmsg 'No one matching'
+            overhead 'Target gone - nothing nearby' 53
+            removelist 'nox_single'
+            stop
+        endif
+        @setvar! noxCand lasttarget
+        getlabel noxCand candLabel
+        if find noxCand ground -1 -1 0
+            // that's us - never a target
+        elseif "tame" in candLabel or "summoned" in candLabel
+            @ignore noxCand
+        else
+            @setvar! noxMain noxCand
+            @setvar! HaveTarget 1
+            attack noxMain
+            settimer 'attackref' 0
+            if followers > 0
+                say 'All kill'
+                waitfortarget 1500
+                if targetexists
+                    target noxMain
+                endif
+            endif
+            overhead '[ NEW TARGET ]' 68 noxMain
+        endif
+    endif
+
+    // ===== 5. Combat =====
+    if HaveTarget = 1
+        if timer 'attackref' >= 3000
+            attack noxMain
+            settimer 'attackref' 0
+        endif
+
+        if listexists 'f_arcane' and mana < 50
+            removelist 'f_arcane'
+            say '[WeaponAbility2'
+            wait 100
+            attack noxMain
+        endif
+
+        // Explosion potion every 15 seconds (only with Alchemy >= 80)
+        if skill 'Alchemy' >= 80 and timer 'explo' >= 15000 and findtype 3853 self
+            if targetexists
+                hotkey 'Cancel Current Target'
+                wait 100
+            endif
+            dclicktype 3853
+            waitfortarget 2000
+            if targetexists
+                target noxMain
+            endif
+            settimer 'explo' 0
+            wait 200
+        endif
+
+        @setvar! Acted 0
+
+        // a) Mana Drain once per new enemy, then every 60 s
+        if Acted = 0
+            if not inlist 'lastdrain' noxMain
+                settimer 'manadrain' 99999
+            endif
+            if timer 'manadrain' >= 60000 and mana >= 11 and findtype 3962 self and findtype 3974 self and findtype 3981 self
+                cast 'Mana Drain'
+                // Wait for the cursor, but stop at once if the cast was refused
+                for 20
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
+                if targetexists
+                    target noxMain
+                    // Only start the timer when the cast really went off
+                    settimer 'manadrain' 0
+                    clearlist 'lastdrain'
+                    pushlist 'lastdrain' noxMain
+                endif
+                @setvar! Acted 1
+            endif
+        endif
+
+        // b) Damage spells, only with mana to spare
+        if Acted = 0 and mana >= NukeMana
+            // Harm: Nightshade + Spider's Silk, 6 mana, every 15 s
+            if UseHarm = 1 and timer 'harm' >= HarmEvery and findtype 3976 self and findtype 3981 self
+                cast 'Harm'
+                // Wait for the cursor, but stop at once if the cast was refused
+                for 20
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
+                if targetexists
+                    target noxMain
+                    // Only start the timer when the cast really went off
+                    settimer 'harm' 0
+                endif
+            elseif timer 'arrow' >= 15000 and findtype 3980 self
+                cast 'Magic Arrow'
+                // Wait for the cursor, but stop at once if the cast was refused
+                for 20
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
+                if targetexists
+                    target noxMain
+                    // Only start the timer when the cast really went off
+                    settimer 'arrow' 0
+                endif
+            elseif timer 'lightning' >= 15000 and findtype 3974 self and findtype 3980 self
+                cast 'Lightning'
+                // Wait for the cursor, but stop at once if the cast was refused
+                for 20
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
+                if targetexists
+                    target noxMain
+                    // Only start the timer when the cast really went off
+                    settimer 'lightning' 0
+                endif
+            elseif UseMindBlast = 1 and findtype 3962 self and findtype 3974 self and findtype 3976 self and findtype 3980 self
+                // Filler
+                cast 'Mind Blast'
+                // Wait for the cursor, but stop at once if the cast was refused
+                for 20
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
+                if targetexists
+                    target noxMain
+                endif
+            endif
+        endif
+    endif
+
+    wait 100
+endwhile
+
+if listexists 'nox_single'
+    removelist 'nox_single'
+endif
+if listexists 'f_arcane'
+    removelist 'f_arcane'
+endif
+overhead 'Single target stopped' 33
