@@ -1,15 +1,16 @@
 // ==========================================================
 // Single Mage FS (EXPERIMENTAL) - pure mage single target rotation
 // (no Necromancy, no Poison, no Tracking)
-// Same as Single Mage, but Flamestrike every 15 s (its burn lasts 15 s)
-// takes Harm's place in the rotation. Harm is not cast at all.
+// Same as Single Mage, plus Flamestrike every 15 s (its burn lasts 15 s)
+// right before Harm.
 // Curse goes on each new enemy and is renewed every 2 minutes.
 // Press the hotkey: a target cursor appears, click your enemy.
 // Press again to stop.
 //
 // Rotation on that one target, one action per pass:
 //   heals/cures/potions > Leyline > buff spells > Mana Drain > Curse >
-//   Flamestrike (every 15 s) > Magic Arrow / Lightning > Mind Blast (filler)
+//   Flamestrike (every 15 s) > Harm (every 15 s) > Magic Arrow / Lightning >
+//   Mind Blast (filler)
 // ==========================================================
 
 // ===== CONFIG =====
@@ -24,6 +25,9 @@
 // Flamestrike costs 40 mana. Raise this (e.g. 51) to always keep a
 // Greater Heal (11) in reserve after it.
 @setvar! FlamestrikeMana 40
+// Harm (1 = on, 0 = off) and its cooldown in ms
+@setvar! UseHarm 1
+@setvar! HarmEvery 15000
 // Curse on each new enemy, then every 2 minutes (1 = on, 0 = off)
 @setvar! UseCurse 1
 // Mind Blast as filler (1 = on, 0 = off)
@@ -105,6 +109,10 @@ endif
 if not timerexists 'curse'
     createtimer 'curse'
     settimer 'curse' 999999
+endif
+if not timerexists 'harm'
+    createtimer 'harm'
+    settimer 'harm' 99999
 endif
 if not timerexists 'flamestrike'
     createtimer 'flamestrike'
@@ -547,6 +555,21 @@ while listexists 'nox_single' and not dead
                     target noxMain
                     // Only start the timer when the cast really went off
                     settimer 'flamestrike' 0
+                endif
+            // Harm: Nightshade + Spider's Silk, 6 mana, every 15 s
+            elseif UseHarm = 1 and timer 'harm' >= HarmEvery and findtype 3976 self and findtype 3981 self
+                cast 'Harm'
+                // Wait for the cursor, but stop at once if the cast was refused
+                for 20
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
+                if targetexists
+                    target noxMain
+                    // Only start the timer when the cast really went off
+                    settimer 'harm' 0
                 endif
             elseif timer 'arrow' >= 15000 and findtype 3980 self
                 cast 'Magic Arrow'
