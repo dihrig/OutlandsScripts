@@ -30,8 +30,8 @@ endif
 // Only mobs within this many tiles (max 12 for spells)
 @setvar! ScanRange 10
 
-// Poison Strike on mobs with this many ticks or fewer left (2 - 5), 0 = off
-@setvar! StrikeTicks 3
+// Poison Strike on mobs with this many ticks or fewer left (2 - 9), 0 = off
+@setvar! StrikeTicks 7
 
 // Mind Rot (1 = on, 0 = off)
 @setvar! UseMindRot 1
@@ -353,6 +353,18 @@ while listexists 'nox_multi' and not dead
                         @setvar! StrikeT scanC
                     endif
                     if StrikeTicks >= 5 and "[5" in scanLabel
+                        @setvar! StrikeT scanC
+                    endif
+                    if StrikeTicks >= 6 and "[6" in scanLabel
+                        @setvar! StrikeT scanC
+                    endif
+                    if StrikeTicks >= 7 and "[7" in scanLabel
+                        @setvar! StrikeT scanC
+                    endif
+                    if StrikeTicks >= 8 and "[8" in scanLabel
+                        @setvar! StrikeT scanC
+                    endif
+                    if StrikeTicks >= 9 and "[9" in scanLabel
                         @setvar! StrikeT scanC
                     endif
                 endif
