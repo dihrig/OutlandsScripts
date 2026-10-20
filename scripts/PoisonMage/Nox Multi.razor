@@ -79,6 +79,11 @@ if targetexists
     hotkey 'Cancel Current Target'
     wait 100
 endif
+// A Last Target pressed while no cursor was open is queued by Razor and
+// would grab our next cursor, sending the spell to the old target
+if queued
+    hotkey 'Clear Target Queue'
+endif
 clearsysmsg
 
 if listexists 'cfg_escape'
@@ -165,6 +170,11 @@ while listexists 'nox_multi' and not dead
     if targetexists
         hotkey 'Cancel Current Target'
         wait 100
+    endif
+    // A Last Target pressed while no cursor was open is queued by Razor and
+    // would grab our next cursor, sending the spell to the old target
+    if queued
+        hotkey 'Clear Target Queue'
     endif
 
     // ===== 3. Escape =====
