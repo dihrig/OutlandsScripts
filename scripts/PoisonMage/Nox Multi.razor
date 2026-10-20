@@ -5,7 +5,9 @@
 // Every pass it cycles through the grey monsters nearby.
 // Priority: 1. poison unpoisoned mobs
 //           2. Poison Strike on a mob with few ticks left
-//           3. upcast poisoned mobs to Lethal
+//           3. buff spells (Protection, Reactive Armor, Magic Reflection,
+//              Cunning); buff potions are drunk any time
+//           4. upcast poisoned mobs to Lethal
 // Pets are sent at one mob at a time.
 // Leyline is used on cooldown while mobs are in range.
 // Note: the scan has to cycle your target highlight - that
@@ -47,10 +49,21 @@ endif
 // is simply retried 3 s later.
 @setvar! LeylineCD 60000
 
+// Buffs kept up during the fight (1 = on, 0 = off)
+// Spells: one per pass, only when not badly hurt and above KeepMana
+@setvar! UseProtection 1
+@setvar! UseReactiveArmor 1
+@setvar! UseMagicReflect 1
+@setvar! UseCunning 1
+// Potions: drunk whenever the buff is missing (not spells, no delay)
+@setvar! UseStrPot 1
+@setvar! UseAgiPot 1
+@setvar! UseResistPot 1
+
 // Heal thresholds (missing hit points)
 @setvar! HealPotDiff 30
 @setvar! GreaterHealDiff 30
-// Poison is not cast below this much mana, so
+// Poison and buff spells are not cast below this much mana, so
 // there is always enough left for a Greater Heal (11). 0 = off
 @setvar! KeepMana 22
 
@@ -140,6 +153,34 @@ endif
 if not timerexists 'leytry'
     createtimer 'leytry'
     settimer 'leytry' 99999
+endif
+if not timerexists 'protry'
+    createtimer 'protry'
+    settimer 'protry' 99999
+endif
+if not timerexists 'ratry'
+    createtimer 'ratry'
+    settimer 'ratry' 99999
+endif
+if not timerexists 'reflecttry'
+    createtimer 'reflecttry'
+    settimer 'reflecttry' 99999
+endif
+if not timerexists 'cuntry'
+    createtimer 'cuntry'
+    settimer 'cuntry' 99999
+endif
+if not timerexists 'strpot'
+    createtimer 'strpot'
+    settimer 'strpot' 99999
+endif
+if not timerexists 'agipot'
+    createtimer 'agipot'
+    settimer 'agipot' 99999
+endif
+if not timerexists 'resistpot'
+    createtimer 'resistpot'
+    settimer 'resistpot' 99999
 endif
 if not timerexists 'idlemsg'
     createtimer 'idlemsg'
@@ -292,6 +333,39 @@ while listexists 'nox_multi' and not dead
             dclicktype 29012
             settimer 'mushtry' 0
             wait 200
+        endif
+    endif
+
+    // Potion buffs. Not spells, so they never block a cast.
+    // A drink that gives no buff is retried 5 s later.
+    if UseStrPot = 1 and not findbuff 'Strength' and timer 'strpot' >= 5000 and findtype 3849 self
+        dclicktype 3849
+        settimer 'strpot' 0
+        wait 200
+    endif
+    if UseAgiPot = 1 and not findbuff 'Agility' and timer 'agipot' >= 5000 and findtype 3848 self
+        dclicktype 3848
+        settimer 'agipot' 0
+        wait 200
+    endif
+    if UseResistPot = 1 and not findbuff 'Greater Magic Resist Potion' and not findbuff 'Magic Resist Potion' and timer 'resistpot' >= 5000 and findtype 3846 self
+        dclicktype 3846
+        settimer 'resistpot' 0
+        wait 200
+    endif
+
+    // Buff spells: pick the first missing one, it is cast in the combat part.
+    // Each needs mana for itself plus a Greater Heal (11) afterwards.
+    @setvar! BuffSpell 0
+    if HealFailed = 0 and diffhits < GreaterHealDiff and mana >= KeepMana
+        if UseProtection = 1 and not findbuff 'Protection' and timer 'protry' >= 3000 and mana >= 17 and findtype 3972 self and findtype 3973 self and findtype 3980 self
+            @setvar! BuffSpell 1
+        elseif UseReactiveArmor = 1 and not findbuff 'Reactive Armor' and timer 'ratry' >= 3000 and mana >= 15 and findtype 3972 self and findtype 3980 self and findtype 3981 self
+            @setvar! BuffSpell 2
+        elseif UseMagicReflect = 1 and not findbuff 'Magic Reflection' and timer 'reflecttry' >= 3000 and mana >= 25 and findtype 3972 self and findtype 3974 self and findtype 3981 self
+            @setvar! BuffSpell 3
+        elseif UseCunning = 1 and not findbuff 'Cunning' and timer 'cuntry' >= 3000 and mana >= 15 and findtype 3974 self and findtype 3976 self
+            @setvar! BuffSpell 4
         endif
     endif
 
@@ -464,6 +538,39 @@ while listexists 'nox_multi' and not dead
             settimer 'pstrike' 28000
         endif
         settimer 'necrogap' 0
+    elseif BuffSpell > 0
+        // Buff spells (Protection, Reactive Armor, Magic Reflection, Cunning)
+        if BuffSpell = 1
+            cast 'Protection'
+            settimer 'protry' 0
+        elseif BuffSpell = 2
+            cast 'Reactive Armor'
+            settimer 'ratry' 0
+        elseif BuffSpell = 3
+            cast 'Magic Reflection'
+            settimer 'reflecttry' 0
+        else
+            cast 'Cunning'
+            settimer 'cuntry' 0
+            // Wait for the cursor, but stop at once if the cast was refused
+            for 20
+                if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                    break
+                endif
+                wait 100
+            endfor
+            if targetexists
+                target 'self'
+            endif
+        endif
+        // Let the cast finish, so the next spell isn't refused
+        wait 300
+        for 30
+            if not casting
+                break
+            endif
+            wait 100
+        endfor
     elseif UpcastLethal = 1 and UpcastT != 0 and mana >= 9 and mana >= KeepMana and findtype 3976 self
         cast 'Poison'
         // Wait for the cursor, but stop at once if the cast was refused
