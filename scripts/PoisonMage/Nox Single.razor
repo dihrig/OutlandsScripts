@@ -1,12 +1,14 @@
 // ==========================================================
 // Nox Single - targeting + single target rotation in one script
 // Press the hotkey: a Poison cursor appears, click your enemy.
+// If your last target is still alive and in range, the script
+// continues on it instead (no cursor) - e.g. after stopping to move.
 // Press again to stop.
 //
 // Phase 1: fast Poison casts until the wanted level lands
 // Phase 2: rotation on that one target, one action per pass:
-//   escape > heals/cures > keep poison up > Poison Strike >
-//   necro debuffs > Mana Drain > Curse > damage spells
+//   escape > heals/cures > Leyline > keep poison up > Poison Strike >
+//   necro debuffs > Mana Drain > damage spells
 // ==========================================================
 
 // ===== CONFIG =====
@@ -24,7 +26,7 @@ endif
 @setvar! NoxLevel 2
 
 // Poison Strike when this many ticks or fewer are left (2 - 9)
-@setvar! StrikeTicks 5
+@setvar! StrikeTicks 7
 
 // Necro debuffs (1 = on, 0 = off)
 @setvar! UseCorpseSkin 1
@@ -32,20 +34,32 @@ endif
 @setvar! UseEvilOmen 0
 @setvar! UseStrangle 0
 
-// Curse on each new enemy, then every 2 minutes (1 = on, 0 = off)
-@setvar! UseCurse 1
-
 // Damage spells only above this mana (keeps mana for Poison and heals)
 @setvar! NukeMana 40
 // Mind Blast as filler (1 = on, 0 = off)
 @setvar! UseMindBlast 1
 
+// Leyline (Arcane weapon ability 2) on cooldown (1 = on, 0 = off)
+@setvar! UseLeyline 1
+// Wait this long after Leyline went off before trying again (ms).
+// 60000 comes from community scripts - CHECK IN-GAME: if your Leyline
+// cooldown bar is shorter, lower this. A try that is still on cooldown
+// is simply retried 3 s later.
+@setvar! LeylineCD 60000
+
 // Heal thresholds (missing hit points)
 @setvar! HealPotDiff 30
 @setvar! GreaterHealDiff 30
+// Poison and Mana Drain are not cast below this much mana, so
+// there is always enough left for a Greater Heal (11). 0 = off
+@setvar! KeepMana 22
 
 // When the target dies: 1 = take the closest grey monster, 0 = stop
 @setvar! AutoNext 1
+
+// On start, continue on your last target if it is still alive and in
+// range (1 = on, 0 = always ask with a Poison cursor)
+@setvar! ResumeLastTarget 1
 
 // ===== Toggle =====
 // The multi target script can't be running at the same time
@@ -63,8 +77,8 @@ endif
 createlist 'nox_single'
 
 // Reset state flags from any previous run
-if listexists 'f_arcane'
-    removelist 'f_arcane'
+if listexists 'f_leytry'
+    removelist 'f_leytry'
 endif
 if listexists 'f_player'
     removelist 'f_player'
@@ -78,19 +92,11 @@ endif
 if not listexists 'lastdrain'
     createlist 'lastdrain'
 endif
-// Remembers the last cursed enemy (kept between runs)
-if not listexists 'lastcurse'
-    createlist 'lastcurse'
-endif
 
 // ===== Timers (99999 = ready immediately) =====
 if not timerexists 'manadrain'
     createtimer 'manadrain'
     settimer 'manadrain' 99999
-endif
-if not timerexists 'curse'
-    createtimer 'curse'
-    settimer 'curse' 999999
 endif
 if not timerexists 'arrow'
     createtimer 'arrow'
@@ -160,48 +166,88 @@ if not timerexists 'necrogap'
     createtimer 'necrogap'
     settimer 'necrogap' 99999
 endif
+if not timerexists 'leyline'
+    createtimer 'leyline'
+    settimer 'leyline' 99999
+endif
+if not timerexists 'leytry'
+    createtimer 'leytry'
+    settimer 'leytry' 99999
+endif
 if not timerexists 'attackref'
     createtimer 'attackref'
     settimer 'attackref' 99999
 endif
 
 // ==========================================================
-// PHASE 1: pick the target with the first Poison cast
+// PHASE 1: pick the target (last target, or the first Poison cast)
 // ==========================================================
-if not findtype 3976 self
-    overhead 'No Nightshade!' 33
-    removelist 'nox_single'
-    stop
-endif
-if mana < 9
-    overhead 'Not enough mana!' 33
-    removelist 'nox_single'
-    stop
-endif
-
 @setvar! NoxLanded 0
 @setvar! NoxAbort 0
+@setvar! NoxResume 0
 
-overhead 'Select enemy' 68
-clearsysmsg
-cast 'Poison'
-waitfortarget 3000
-if not targetexists
-    overhead 'Cast did not start - try again' 33
-    removelist 'nox_single'
-    stop
+// The enemy lives in its own variable, so other target hotkeys can't move it.
+// Last target still alive and in range? Then continue on it.
+if ResumeLastTarget = 1
+    @setvar! noxCand lasttarget
+    if find noxCand ground -1 -1 12
+        if dead noxCand or find noxCand ground -1 -1 0
+            // dead, or that's us
+        else
+            getlabel noxCand candLabel
+            if "tame" in candLabel or "summoned" in candLabel
+                // own pet - ask for a new enemy
+            else
+                @setvar! noxMain noxCand
+                @setvar! NoxResume 1
+            endif
+        endif
+    endif
 endif
-while targetexists
-    wait 50
-endwhile
 
-// The enemy lives in its own variable, so other target hotkeys can't move it
-@setvar! noxMain lasttarget
+if NoxResume = 1
+    if queued
+        hotkey 'Clear Target Queue'
+    endif
+    clearsysmsg
+    overhead '[ CONTINUE ]' 68 noxMain
+else
+    if not findtype 3976 self
+        overhead 'No Nightshade!' 33
+        removelist 'nox_single'
+        stop
+    endif
+    if mana < 9
+        overhead 'Not enough mana!' 33
+        removelist 'nox_single'
+        stop
+    endif
 
-if dead noxMain or not find noxMain ground -1 -1 12 or find noxMain ground -1 -1 0
-    overhead 'No valid target' 33
-    removelist 'nox_single'
-    stop
+    // A Last Target pressed while no cursor was open is queued by Razor and
+    // would grab our next cursor, sending the spell to the old target
+    if queued
+        hotkey 'Clear Target Queue'
+    endif
+    overhead 'Select enemy' 68
+    clearsysmsg
+    cast 'Poison'
+    waitfortarget 3000
+    if not targetexists
+        overhead 'Cast did not start - try again' 33
+        removelist 'nox_single'
+        stop
+    endif
+    while targetexists
+        wait 50
+    endwhile
+
+    @setvar! noxMain lasttarget
+
+    if dead noxMain or not find noxMain ground -1 -1 12 or find noxMain ground -1 -1 0
+        overhead 'No valid target' 33
+        removelist 'nox_single'
+        stop
+    endif
 endif
 
 warmode on
@@ -254,6 +300,9 @@ for 12
         break
     endif
 
+    if queued
+        hotkey 'Clear Target Queue'
+    endif
     clearsysmsg
     cast 'Poison'
     for 40
@@ -315,9 +364,13 @@ while listexists 'nox_single' and not dead
             createlist 'f_player'
         endif
     endif
-    if insysmsg '100% arcane buildup'
-        if not listexists 'f_arcane'
-            createlist 'f_arcane'
+    // Did the last Leyline try go off? Refused = still on cooldown, retry in 3 s
+    if listexists 'f_leytry'
+        removelist 'f_leytry'
+        if insysmsg 'cannot perform that ability yet'
+            // still on cooldown
+        else
+            settimer 'leyline' 0
         endif
     endif
     if insysmsg 'consume a magic mushroom'
@@ -332,6 +385,11 @@ while listexists 'nox_single' and not dead
         hotkey 'Cancel Current Target'
         wait 100
     endif
+    // A Last Target pressed while no cursor was open is queued by Razor and
+    // would grab our next cursor, sending the spell to the old target
+    if queued
+        hotkey 'Clear Target Queue'
+    endif
 
     // ===== 3. Escape =====
     if listexists 'f_player'
@@ -341,8 +399,8 @@ while listexists 'nox_single' and not dead
         hotkey '> Interrupt'
         whisper '[recall Guild Hall'
         removelist 'nox_single'
-        if listexists 'f_arcane'
-            removelist 'f_arcane'
+        if listexists 'f_leytry'
+            removelist 'f_leytry'
         endif
         stop
     endif
@@ -363,6 +421,7 @@ while listexists 'nox_single' and not dead
     endif
 
     // ===== 4. Defensive =====
+    @setvar! HealFailed 0
     if diffhits >= HealPotDiff and timer 'healpot' >= 10000 and findtype 3852 self
         dclicktype 3852
         settimer 'healpot' 0
@@ -397,8 +456,12 @@ while listexists 'nox_single' and not dead
             endfor
             if targetexists
                 target 'self'
+                settimer 'curepot' 0
+            else
+                // Refused (still recovering): no attack spells this pass,
+                // the next pass tries the cure again first
+                @setvar! HealFailed 1
             endif
-            settimer 'curepot' 0
         endif
     endif
 
@@ -425,8 +488,13 @@ while listexists 'nox_single' and not dead
         endfor
         if targetexists
             target 'self'
+            // Only start the timer when the heal really went off
+            settimer 'gheal' 0
+        else
+            // Refused (still recovering): no attack spells this pass,
+            // the next pass tries the heal again first
+            @setvar! HealFailed 1
         endif
-        settimer 'gheal' 0
     endif
 
     if mana < 50 and timer 'mushroom' >= 60000
@@ -483,9 +551,13 @@ while listexists 'nox_single' and not dead
             settimer 'attackref' 0
         endif
 
-        if listexists 'f_arcane' and mana < 50
-            removelist 'f_arcane'
+        // Leyline on cooldown. Not a spell, so it never blocks a cast.
+        if UseLeyline = 1 and timer 'leyline' >= LeylineCD and timer 'leytry' >= 3000
             say '[WeaponAbility2'
+            settimer 'leytry' 0
+            if not listexists 'f_leytry'
+                createlist 'f_leytry'
+            endif
             wait 100
             attack noxMain
         endif
@@ -521,13 +593,17 @@ while listexists 'nox_single' and not dead
             settimer 'lethalseen' 0
         endif
 
+        // A heal or cure was refused: skip all attack spells this pass
         @setvar! Acted 0
+        if HealFailed = 1
+            @setvar! Acted 1
+        endif
 
         // a) Keep the poison up. Poison is cast back to back until the label
         //    shows the wanted level (one extra cast after it lands is fine).
         //    If it never gets there (immune / resisting target), back off to
         //    one Poison every 5 s so the other spells still get cast.
-        if NeedPoison = 1 and mana >= 9 and findtype 3976 self
+        if Acted = 0 and NeedPoison = 1 and mana >= 9 and mana >= KeepMana and findtype 3976 self
             if timer 'lethalseen' < 8000 or timer 'poisontry' >= 5000
                 cast 'Poison'
                 // Wait for the cursor, but stop at once if the cast was refused
@@ -665,7 +741,7 @@ while listexists 'nox_single' and not dead
             if not inlist 'lastdrain' noxMain
                 settimer 'manadrain' 99999
             endif
-            if timer 'manadrain' >= 60000 and mana >= 11 and findtype 3962 self and findtype 3974 self and findtype 3981 self
+            if timer 'manadrain' >= 60000 and mana >= 11 and mana >= KeepMana and findtype 3962 self and findtype 3974 self and findtype 3981 self
                 cast 'Mana Drain'
                 // Wait for the cursor, but stop at once if the cast was refused
                 for 20
@@ -685,32 +761,7 @@ while listexists 'nox_single' and not dead
             endif
         endif
 
-        // e) Curse once per new enemy, then every 2 minutes
-        if Acted = 0 and UseCurse = 1
-            if not inlist 'lastcurse' noxMain
-                settimer 'curse' 999999
-            endif
-            if timer 'curse' >= 120000 and mana >= 11 and findtype 3972 self and findtype 3976 self and findtype 3980 self
-                cast 'Curse'
-                // Wait for the cursor, but stop at once if the cast was refused
-                for 20
-                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
-                        break
-                    endif
-                    wait 100
-                endfor
-                if targetexists
-                    target noxMain
-                    // Only start the timer when the cast really went off
-                    settimer 'curse' 0
-                    clearlist 'lastcurse'
-                    pushlist 'lastcurse' noxMain
-                endif
-                @setvar! Acted 1
-            endif
-        endif
-
-        // f) Damage spells, only with mana to spare
+        // e) Damage spells, only with mana to spare
         if Acted = 0 and mana >= NukeMana
             if timer 'arrow' >= 15000 and findtype 3980 self
                 cast 'Magic Arrow'
@@ -762,8 +813,8 @@ endwhile
 if listexists 'nox_single'
     removelist 'nox_single'
 endif
-if listexists 'f_arcane'
-    removelist 'f_arcane'
+if listexists 'f_leytry'
+    removelist 'f_leytry'
 endif
 if listexists 'f_player'
     removelist 'f_player'
