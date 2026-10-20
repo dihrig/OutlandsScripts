@@ -5,7 +5,7 @@
 // Press again to stop.
 //
 // Rotation on that one target, one action per pass:
-//   heals/cures/potions > Leyline > buff spells > Mana Drain >
+//   heals/cures/potions > Leyline > buff spells > Mana Drain > Curse >
 //   Harm (every 15 s) > Magic Arrow / Lightning > Mind Blast (filler)
 // ==========================================================
 
@@ -17,6 +17,8 @@
 // Harm (1 = on, 0 = off) and its cooldown in ms
 @setvar! UseHarm 1
 @setvar! HarmEvery 15000
+// Curse on each new enemy, then every 2 minutes (1 = on, 0 = off)
+@setvar! UseCurse 1
 // Mind Blast as filler (1 = on, 0 = off)
 @setvar! UseMindBlast 1
 
@@ -83,10 +85,19 @@ if not listexists 'lastdrain'
     createlist 'lastdrain'
 endif
 
+// Remembers the last cursed enemy (kept between runs)
+if not listexists 'lastcurse'
+    createlist 'lastcurse'
+endif
+
 // ===== Timers (99999 = ready immediately) =====
 if not timerexists 'manadrain'
     createtimer 'manadrain'
     settimer 'manadrain' 99999
+endif
+if not timerexists 'curse'
+    createtimer 'curse'
+    settimer 'curse' 999999
 endif
 if not timerexists 'harm'
     createtimer 'harm'
@@ -486,7 +497,33 @@ while listexists 'nox_single' and not dead
             endif
         endif
 
-        // c) Damage spells, only with mana to spare
+        // c) Curse once per new enemy, then every 2 minutes
+        if Acted = 0 and UseCurse = 1
+            if not inlist 'lastcurse' noxMain
+                settimer 'curse' 999999
+            endif
+            // Curse: Garlic + Nightshade + Sulfurous Ash, 11 mana
+            if timer 'curse' >= 120000 and mana >= 11 and findtype 3972 self and findtype 3976 self and findtype 3980 self
+                cast 'Curse'
+                // Wait for the cursor, but stop at once if the cast was refused
+                for 20
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
+                if targetexists
+                    target noxMain
+                    // Only start the timer when the cast really went off
+                    settimer 'curse' 0
+                    clearlist 'lastcurse'
+                    pushlist 'lastcurse' noxMain
+                endif
+                @setvar! Acted 1
+            endif
+        endif
+
+        // d) Damage spells, only with mana to spare
         if Acted = 0 and mana >= NukeMana
             // Harm: Nightshade + Spider's Silk, 6 mana, every 15 s
             if UseHarm = 1 and timer 'harm' >= HarmEvery and findtype 3976 self and findtype 3981 self
