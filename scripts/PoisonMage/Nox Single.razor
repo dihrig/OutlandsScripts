@@ -1,6 +1,8 @@
 // ==========================================================
 // Nox Single - targeting + single target rotation in one script
 // Press the hotkey: a Poison cursor appears, click your enemy.
+// If your last target is still alive and in range, the script
+// continues on it instead (no cursor) - e.g. after stopping to move.
 // Press again to stop.
 //
 // Phase 1: fast Poison casts until the wanted level lands
@@ -54,6 +56,10 @@ endif
 
 // When the target dies: 1 = take the closest grey monster, 0 = stop
 @setvar! AutoNext 1
+
+// On start, continue on your last target if it is still alive and in
+// range (1 = on, 0 = always ask with a Poison cursor)
+@setvar! ResumeLastTarget 1
 
 // ===== Toggle =====
 // The multi target script can't be running at the same time
@@ -174,47 +180,74 @@ if not timerexists 'attackref'
 endif
 
 // ==========================================================
-// PHASE 1: pick the target with the first Poison cast
+// PHASE 1: pick the target (last target, or the first Poison cast)
 // ==========================================================
-if not findtype 3976 self
-    overhead 'No Nightshade!' 33
-    removelist 'nox_single'
-    stop
-endif
-if mana < 9
-    overhead 'Not enough mana!' 33
-    removelist 'nox_single'
-    stop
-endif
-
 @setvar! NoxLanded 0
 @setvar! NoxAbort 0
+@setvar! NoxResume 0
 
-// A Last Target pressed while no cursor was open is queued by Razor and
-// would grab our next cursor, sending the spell to the old target
-if queued
-    hotkey 'Clear Target Queue'
+// The enemy lives in its own variable, so other target hotkeys can't move it.
+// Last target still alive and in range? Then continue on it.
+if ResumeLastTarget = 1
+    @setvar! noxCand lasttarget
+    if find noxCand ground -1 -1 12
+        if dead noxCand or find noxCand ground -1 -1 0
+            // dead, or that's us
+        else
+            getlabel noxCand candLabel
+            if "tame" in candLabel or "summoned" in candLabel
+                // own pet - ask for a new enemy
+            else
+                @setvar! noxMain noxCand
+                @setvar! NoxResume 1
+            endif
+        endif
+    endif
 endif
-overhead 'Select enemy' 68
-clearsysmsg
-cast 'Poison'
-waitfortarget 3000
-if not targetexists
-    overhead 'Cast did not start - try again' 33
-    removelist 'nox_single'
-    stop
-endif
-while targetexists
-    wait 50
-endwhile
 
-// The enemy lives in its own variable, so other target hotkeys can't move it
-@setvar! noxMain lasttarget
+if NoxResume = 1
+    if queued
+        hotkey 'Clear Target Queue'
+    endif
+    clearsysmsg
+    overhead '[ CONTINUE ]' 68 noxMain
+else
+    if not findtype 3976 self
+        overhead 'No Nightshade!' 33
+        removelist 'nox_single'
+        stop
+    endif
+    if mana < 9
+        overhead 'Not enough mana!' 33
+        removelist 'nox_single'
+        stop
+    endif
 
-if dead noxMain or not find noxMain ground -1 -1 12 or find noxMain ground -1 -1 0
-    overhead 'No valid target' 33
-    removelist 'nox_single'
-    stop
+    // A Last Target pressed while no cursor was open is queued by Razor and
+    // would grab our next cursor, sending the spell to the old target
+    if queued
+        hotkey 'Clear Target Queue'
+    endif
+    overhead 'Select enemy' 68
+    clearsysmsg
+    cast 'Poison'
+    waitfortarget 3000
+    if not targetexists
+        overhead 'Cast did not start - try again' 33
+        removelist 'nox_single'
+        stop
+    endif
+    while targetexists
+        wait 50
+    endwhile
+
+    @setvar! noxMain lasttarget
+
+    if dead noxMain or not find noxMain ground -1 -1 12 or find noxMain ground -1 -1 0
+        overhead 'No valid target' 33
+        removelist 'nox_single'
+        stop
+    endif
 endif
 
 warmode on
