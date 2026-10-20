@@ -129,6 +129,10 @@ if not timerexists 'mindrot'
     createtimer 'mindrot'
     settimer 'mindrot' 99999
 endif
+if not timerexists 'necrogap'
+    createtimer 'necrogap'
+    settimer 'necrogap' 99999
+endif
 if not timerexists 'leyline'
     createtimer 'leyline'
     settimer 'leyline' 99999
@@ -292,7 +296,8 @@ while listexists 'nox_multi' and not dead
     endif
 
     // Mind Rot (self buff)
-    if UseMindRot = 1 and skill 'Necromancy' >= 75 and not findbuff 'Mind Rot' and timer 'mindrot' >= 30000
+    // Shares the 1 s gap with Poison Strike, so they don't block each other
+    if UseMindRot = 1 and skill 'Necromancy' >= 75 and not findbuff 'Mind Rot' and timer 'mindrot' >= 30000 and timer 'necrogap' >= 1000
         say '[MindRot'
         wait 250
         if insysmsg 'seconds before you may use that ability again'
@@ -300,6 +305,7 @@ while listexists 'nox_multi' and not dead
         else
             settimer 'mindrot' 0
         endif
+        settimer 'necrogap' 0
     endif
 
     // ===== 5. Scan the mobs in range =====
@@ -423,19 +429,41 @@ while listexists 'nox_multi' and not dead
                 target PoisonT
             endif
         endif
-    elseif StrikeT != 0 and skill 'Necromancy' >= 55 and timer 'pstrike' >= 30000
+    elseif StrikeT != 0 and skill 'Necromancy' >= 55 and timer 'pstrike' >= 30000 and timer 'necrogap' >= 1000
         say '[PoisonStrike'
         waitfortarget 1500
         if targetexists
             target StrikeT
         endif
-        wait 250
-        if insysmsg 'seconds before you may use that ability again' or insysmsg 'do not have a Spell-based poison'
-            settimer 'pstrike' 25000
-        else
+        // Wait up to 1 s for the server's answer.
+        // Only "unholy symbols remaining" counts as a real hit.
+        @setvar! StrikeResult 0
+        for 10
+            if insysmsg 'nholy symbols remaining'
+                @setvar! StrikeResult 1
+                break
+            endif
+            if insysmsg 'seconds before you may use that ability again'
+                @setvar! StrikeResult 2
+                break
+            endif
+            if insysmsg 'do not have a Spell-based poison' or insysmsg 'another Necromancy ability'
+                @setvar! StrikeResult 3
+                break
+            endif
+            wait 100
+        endfor
+        if StrikeResult = 1
             settimer 'pstrike' 0
             overhead '[ POISON STRIKE ]' 77 StrikeT
+        elseif StrikeResult = 2
+            // Still on cooldown: try again in 5 s
+            settimer 'pstrike' 25000
+        else
+            // Blocked, no poison or no answer: try again in 2 s
+            settimer 'pstrike' 28000
         endif
+        settimer 'necrogap' 0
     elseif UpcastLethal = 1 and UpcastT != 0 and mana >= 9 and mana >= KeepMana and findtype 3976 self
         cast 'Poison'
         // Wait for the cursor, but stop at once if the cast was refused
