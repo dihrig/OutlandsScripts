@@ -1,0 +1,563 @@
+// ==========================================================
+// Single Mage FS (EXPERIMENTAL) - pure mage single target rotation
+// (no Necromancy, no Poison, no Tracking)
+// Same as Single Mage, but Flamestrike every 15 s (its burn lasts 15 s)
+// takes Harm's place in the rotation. Harm is not cast at all.
+// Press the hotkey: a target cursor appears, click your enemy.
+// Press again to stop.
+//
+// Rotation on that one target, one action per pass:
+//   heals/cures/potions > Leyline > buff spells > Mana Drain >
+//   Flamestrike (every 15 s) > Magic Arrow / Lightning > Mind Blast (filler)
+// ==========================================================
+
+// ===== CONFIG =====
+// Damage spells only at or above this mana.
+// 11 = cast until the mana for one more Mind Blast or Lightning is gone.
+// Raise it (e.g. 22) to always keep a Greater Heal in reserve.
+@setvar! NukeMana 11
+// Flamestrike (1 = on, 0 = off) and how often it is cast in ms.
+// 15000 = recast as soon as the 15 s burn runs out.
+@setvar! UseFlamestrike 1
+@setvar! FlamestrikeEvery 15000
+// Flamestrike costs 40 mana. Raise this (e.g. 51) to always keep a
+// Greater Heal (11) in reserve after it.
+@setvar! FlamestrikeMana 40
+// Mind Blast as filler (1 = on, 0 = off)
+@setvar! UseMindBlast 1
+
+// Leyline (Arcane weapon ability 2) on cooldown (1 = on, 0 = off)
+@setvar! UseLeyline 1
+// Wait this long after Leyline went off before trying again (ms).
+// 60000 comes from community scripts - CHECK IN-GAME: if your Leyline
+// cooldown bar is shorter, lower this. A try that is still on cooldown
+// is simply retried 3 s later.
+@setvar! LeylineCD 60000
+
+// Buffs kept up during the fight (1 = on, 0 = off)
+// Spells: one per pass, only when not badly hurt and above KeepMana
+@setvar! UseProtection 1
+@setvar! UseReactiveArmor 1
+@setvar! UseMagicReflect 1
+@setvar! UseCunning 1
+// Potions: drunk whenever the buff is missing (not spells, no delay)
+@setvar! UseStrPot 1
+@setvar! UseAgiPot 1
+@setvar! UseResistPot 1
+
+// Heal thresholds (missing hit points)
+@setvar! HealPotDiff 30
+@setvar! GreaterHealDiff 30
+// Buff spells are not cast below this much mana, so there is always
+// enough left for a Greater Heal (11). 0 = off
+@setvar! KeepMana 22
+
+// When the target dies: 1 = take the closest grey monster, 0 = stop
+@setvar! AutoNext 1
+
+// ===== Toggle =====
+// Shares its on/off switch with Nox Single, so only one of them runs.
+// The multi target script can't be running at the same time either.
+if listexists 'nox_multi'
+    removelist 'nox_multi'
+endif
+if listexists 'nox_single'
+    removelist 'nox_single'
+    if targetexists
+        hotkey 'Cancel Current Target'
+    endif
+    overhead 'Single target OFF' 33
+    stop
+endif
+createlist 'nox_single'
+
+// Reset state flags from any previous run
+if listexists 'f_leytry'
+    removelist 'f_leytry'
+endif
+if targetexists
+    hotkey 'Cancel Current Target'
+    wait 100
+endif
+
+// Remembers the last mana-drained enemy (kept between runs)
+if not listexists 'lastdrain'
+    createlist 'lastdrain'
+endif
+
+// ===== Timers (99999 = ready immediately) =====
+if not timerexists 'manadrain'
+    createtimer 'manadrain'
+    settimer 'manadrain' 99999
+endif
+if not timerexists 'flamestrike'
+    createtimer 'flamestrike'
+    settimer 'flamestrike' 99999
+endif
+if not timerexists 'arrow'
+    createtimer 'arrow'
+    settimer 'arrow' 99999
+endif
+if not timerexists 'lightning'
+    createtimer 'lightning'
+    settimer 'lightning' 99999
+endif
+if not timerexists 'healpot'
+    createtimer 'healpot'
+    settimer 'healpot' 99999
+endif
+if not timerexists 'curepot'
+    createtimer 'curepot'
+    settimer 'curepot' 99999
+endif
+if not timerexists 'gheal'
+    createtimer 'gheal'
+    settimer 'gheal' 99999
+endif
+if not timerexists 'mushroom'
+    createtimer 'mushroom'
+    settimer 'mushroom' 99999
+endif
+if not timerexists 'mushtry'
+    createtimer 'mushtry'
+    settimer 'mushtry' 99999
+endif
+if not timerexists 'explo'
+    createtimer 'explo'
+    settimer 'explo' 99999
+endif
+if not timerexists 'leyline'
+    createtimer 'leyline'
+    settimer 'leyline' 99999
+endif
+if not timerexists 'leytry'
+    createtimer 'leytry'
+    settimer 'leytry' 99999
+endif
+if not timerexists 'protry'
+    createtimer 'protry'
+    settimer 'protry' 99999
+endif
+if not timerexists 'ratry'
+    createtimer 'ratry'
+    settimer 'ratry' 99999
+endif
+if not timerexists 'reflecttry'
+    createtimer 'reflecttry'
+    settimer 'reflecttry' 99999
+endif
+if not timerexists 'cuntry'
+    createtimer 'cuntry'
+    settimer 'cuntry' 99999
+endif
+if not timerexists 'strpot'
+    createtimer 'strpot'
+    settimer 'strpot' 99999
+endif
+if not timerexists 'agipot'
+    createtimer 'agipot'
+    settimer 'agipot' 99999
+endif
+if not timerexists 'resistpot'
+    createtimer 'resistpot'
+    settimer 'resistpot' 99999
+endif
+if not timerexists 'attackref'
+    createtimer 'attackref'
+    settimer 'attackref' 99999
+endif
+
+// ==========================================================
+// Pick the target
+// ==========================================================
+// A Last Target pressed while no cursor was open is queued by Razor and
+// would grab our next cursor, picking the old target
+if queued
+    hotkey 'Clear Target Queue'
+endif
+overhead 'Select enemy' 68
+// No value = Razor opens a target cursor and waits for your click
+setvar noxMain
+
+if dead noxMain or not find noxMain ground -1 -1 12 or find noxMain ground -1 -1 0
+    overhead 'No valid target' 33
+    removelist 'nox_single'
+    stop
+endif
+
+warmode on
+attack noxMain
+settimer 'attackref' 0
+if followers > 0
+    say 'All kill'
+    waitfortarget 1500
+    if targetexists
+        target noxMain
+    endif
+endif
+
+// ==========================================================
+// Rotation
+// ==========================================================
+overhead 'Rotating !' 68
+clearsysmsg
+
+while listexists 'nox_single' and not dead
+
+    // ===== 1. Read the journal into flags =====
+    // Did the last Leyline try go off? Refused = still on cooldown, retry in 3 s
+    if listexists 'f_leytry'
+        removelist 'f_leytry'
+        if insysmsg 'cannot perform that ability yet'
+            // still on cooldown
+        else
+            settimer 'leyline' 0
+        endif
+    endif
+    if insysmsg 'consume a magic mushroom'
+        settimer 'mushroom' 0
+    endif
+
+    // ===== 2. Clear once, after everything has been read =====
+    clearsysmsg
+
+    // A stray cursor must never be used by a self-target spell
+    if targetexists
+        hotkey 'Cancel Current Target'
+        wait 100
+    endif
+    // A Last Target pressed while no cursor was open is queued by Razor and
+    // would grab our next cursor, sending the spell to the old target
+    if queued
+        hotkey 'Clear Target Queue'
+    endif
+
+    // ===== 3. Defensive =====
+    @setvar! HealFailed 0
+    if diffhits >= HealPotDiff and timer 'healpot' >= 10000 and findtype 3852 self
+        dclicktype 3852
+        settimer 'healpot' 0
+        wait 200
+    endif
+
+    if poisoned and timer 'curepot' >= 2000
+        if findtype 3847 self
+            dclicktype 3847
+            settimer 'curepot' 0
+            wait 200
+        elseif mana >= 6 and findtype 3972 self and findtype 3973 self
+            // Wait for a running cast to finish and drop any stray cursor,
+            // so 'target self' can only ever answer this heal/cure
+            for 25
+                if not casting
+                    break
+                endif
+                wait 100
+            endfor
+            if targetexists
+                hotkey 'Cancel Current Target'
+                wait 100
+            endif
+            cast 'Cure'
+            // Wait for the cursor, but stop at once if the cast was refused
+            for 20
+                if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                    break
+                endif
+                wait 100
+            endfor
+            if targetexists
+                target 'self'
+                settimer 'curepot' 0
+            else
+                // Refused (still recovering): no attack spells this pass,
+                // the next pass tries the cure again first
+                @setvar! HealFailed 1
+            endif
+        endif
+    endif
+
+    if diffhits >= GreaterHealDiff and mana >= 11 and timer 'gheal' >= 2500 and findtype 3972 self and findtype 3973 self and findtype 3974 self and findtype 3981 self
+        // Wait for a running cast to finish and drop any stray cursor,
+        // so 'target self' can only ever answer this heal/cure
+        for 25
+            if not casting
+                break
+            endif
+            wait 100
+        endfor
+        if targetexists
+            hotkey 'Cancel Current Target'
+            wait 100
+        endif
+        cast 'Greater Heal'
+        // Wait for the cursor, but stop at once if the cast was refused
+        for 25
+            if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                break
+            endif
+            wait 100
+        endfor
+        if targetexists
+            target 'self'
+            // Only start the timer when the heal really went off
+            settimer 'gheal' 0
+        else
+            // Refused (still recovering): no attack spells this pass,
+            // the next pass tries the heal again first
+            @setvar! HealFailed 1
+        endif
+    endif
+
+    if mana < 50 and timer 'mushroom' >= 60000
+        if timer 'mushtry' >= 3000
+            dclicktype 29012
+            settimer 'mushtry' 0
+            wait 200
+        endif
+    endif
+
+    // Potion buffs. Not spells, so they never block a cast.
+    // A drink that gives no buff is retried 5 s later.
+    if UseStrPot = 1 and not findbuff 'Strength' and timer 'strpot' >= 5000 and findtype 3849 self
+        dclicktype 3849
+        settimer 'strpot' 0
+        wait 200
+    endif
+    if UseAgiPot = 1 and not findbuff 'Agility' and timer 'agipot' >= 5000 and findtype 3848 self
+        dclicktype 3848
+        settimer 'agipot' 0
+        wait 200
+    endif
+    if UseResistPot = 1 and not findbuff 'Greater Magic Resist Potion' and not findbuff 'Magic Resist Potion' and timer 'resistpot' >= 5000 and findtype 3846 self
+        dclicktype 3846
+        settimer 'resistpot' 0
+        wait 200
+    endif
+
+    // Buff spells: pick the first missing one, it is cast in the combat part.
+    // Each needs mana for itself plus a Greater Heal (11) afterwards.
+    @setvar! BuffSpell 0
+    if HealFailed = 0 and diffhits < GreaterHealDiff and mana >= KeepMana
+        if UseProtection = 1 and not findbuff 'Protection' and timer 'protry' >= 3000 and mana >= 17 and findtype 3972 self and findtype 3973 self and findtype 3980 self
+            @setvar! BuffSpell 1
+        elseif UseReactiveArmor = 1 and not findbuff 'Reactive Armor' and timer 'ratry' >= 3000 and mana >= 15 and findtype 3972 self and findtype 3980 self and findtype 3981 self
+            @setvar! BuffSpell 2
+        elseif UseMagicReflect = 1 and not findbuff 'Magic Reflection' and timer 'reflecttry' >= 3000 and mana >= 25 and findtype 3972 self and findtype 3974 self and findtype 3981 self
+            @setvar! BuffSpell 3
+        elseif UseCunning = 1 and not findbuff 'Cunning' and timer 'cuntry' >= 3000 and mana >= 15 and findtype 3974 self and findtype 3976 self
+            @setvar! BuffSpell 4
+        endif
+    endif
+
+    // ===== 4. Target still alive? =====
+    @setvar! HaveTarget 1
+    if dead noxMain or not find noxMain ground -1 -1 12 or find noxMain ground -1 -1 0
+        @setvar! HaveTarget 0
+        if AutoNext = 0
+            overhead 'Target gone - stopped' 53
+            removelist 'nox_single'
+            stop
+        endif
+        hotkey 'Target Closest Grey Monster'
+        wait 150
+        if insysmsg 'No one matching'
+            overhead 'Target gone - nothing nearby' 53
+            removelist 'nox_single'
+            stop
+        endif
+        @setvar! noxCand lasttarget
+        getlabel noxCand candLabel
+        if find noxCand ground -1 -1 0
+            // that's us - never a target
+        elseif "tame" in candLabel or "summoned" in candLabel
+            @ignore noxCand
+        else
+            @setvar! noxMain noxCand
+            @setvar! HaveTarget 1
+            attack noxMain
+            settimer 'attackref' 0
+            if followers > 0
+                say 'All kill'
+                waitfortarget 1500
+                if targetexists
+                    target noxMain
+                endif
+            endif
+            overhead '[ NEW TARGET ]' 68 noxMain
+        endif
+    endif
+
+    // ===== 5. Combat =====
+    if HaveTarget = 1
+        if timer 'attackref' >= 3000
+            attack noxMain
+            settimer 'attackref' 0
+        endif
+
+        // Leyline on cooldown. Not a spell, so it never blocks a cast.
+        if UseLeyline = 1 and timer 'leyline' >= LeylineCD and timer 'leytry' >= 3000
+            say '[WeaponAbility2'
+            settimer 'leytry' 0
+            if not listexists 'f_leytry'
+                createlist 'f_leytry'
+            endif
+            wait 100
+            attack noxMain
+        endif
+
+        // Explosion potion every 15 seconds (only with Alchemy >= 80)
+        if skill 'Alchemy' >= 80 and timer 'explo' >= 15000 and findtype 3853 self
+            if targetexists
+                hotkey 'Cancel Current Target'
+                wait 100
+            endif
+            dclicktype 3853
+            waitfortarget 2000
+            if targetexists
+                target noxMain
+            endif
+            settimer 'explo' 0
+            wait 200
+        endif
+
+        // A heal or cure was refused: skip all attack spells this pass
+        @setvar! Acted 0
+        if HealFailed = 1
+            @setvar! Acted 1
+        endif
+
+        // a) Buff spells (Protection, Reactive Armor, Magic Reflection, Cunning)
+        if Acted = 0 and BuffSpell > 0
+            if BuffSpell = 1
+                cast 'Protection'
+                settimer 'protry' 0
+            elseif BuffSpell = 2
+                cast 'Reactive Armor'
+                settimer 'ratry' 0
+            elseif BuffSpell = 3
+                cast 'Magic Reflection'
+                settimer 'reflecttry' 0
+            else
+                cast 'Cunning'
+                settimer 'cuntry' 0
+                // Wait for the cursor, but stop at once if the cast was refused
+                for 20
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
+                if targetexists
+                    target 'self'
+                endif
+            endif
+            // Let the cast finish, so the next spell isn't refused
+            wait 300
+            for 30
+                if not casting
+                    break
+                endif
+                wait 100
+            endfor
+            @setvar! Acted 1
+        endif
+
+        // b) Mana Drain once per new enemy, then every 60 s
+        if Acted = 0
+            if not inlist 'lastdrain' noxMain
+                settimer 'manadrain' 99999
+            endif
+            if timer 'manadrain' >= 60000 and mana >= 11 and findtype 3962 self and findtype 3974 self and findtype 3981 self
+                cast 'Mana Drain'
+                // Wait for the cursor, but stop at once if the cast was refused
+                for 20
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
+                if targetexists
+                    target noxMain
+                    // Only start the timer when the cast really went off
+                    settimer 'manadrain' 0
+                    clearlist 'lastdrain'
+                    pushlist 'lastdrain' noxMain
+                endif
+                @setvar! Acted 1
+            endif
+        endif
+
+        // c) Damage spells, only with mana to spare
+        if Acted = 0 and mana >= NukeMana
+            // Flamestrike: Sulfurous Ash + Spider's Silk, 40 mana, every 15 s
+            // so its 15 s burn never drops off the target
+            if UseFlamestrike = 1 and timer 'flamestrike' >= FlamestrikeEvery and mana >= FlamestrikeMana and findtype 3980 self and findtype 3981 self
+                cast 'Flamestrike'
+                // Wait for the cursor, but stop at once if the cast was refused
+                for 20
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
+                if targetexists
+                    target noxMain
+                    // Only start the timer when the cast really went off
+                    settimer 'flamestrike' 0
+                endif
+            elseif timer 'arrow' >= 15000 and findtype 3980 self
+                cast 'Magic Arrow'
+                // Wait for the cursor, but stop at once if the cast was refused
+                for 20
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
+                if targetexists
+                    target noxMain
+                    // Only start the timer when the cast really went off
+                    settimer 'arrow' 0
+                endif
+            elseif timer 'lightning' >= 15000 and findtype 3974 self and findtype 3980 self
+                cast 'Lightning'
+                // Wait for the cursor, but stop at once if the cast was refused
+                for 20
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
+                if targetexists
+                    target noxMain
+                    // Only start the timer when the cast really went off
+                    settimer 'lightning' 0
+                endif
+            elseif UseMindBlast = 1 and findtype 3962 self and findtype 3974 self and findtype 3976 self and findtype 3980 self
+                // Filler
+                cast 'Mind Blast'
+                // Wait for the cursor, but stop at once if the cast was refused
+                for 20
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
+                if targetexists
+                    target noxMain
+                endif
+            endif
+        endif
+    endif
+
+    wait 100
+endwhile
+
+if listexists 'nox_single'
+    removelist 'nox_single'
+endif
+if listexists 'f_leytry'
+    removelist 'f_leytry'
+endif
+overhead 'Single target stopped' 33
