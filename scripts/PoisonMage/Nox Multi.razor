@@ -50,6 +50,9 @@ endif
 // Heal thresholds (missing hit points)
 @setvar! HealPotDiff 30
 @setvar! GreaterHealDiff 30
+// Poison is not cast below this much mana, so
+// there is always enough left for a Greater Heal (11). 0 = off
+@setvar! KeepMana 22
 
 // ===== Toggle =====
 // The single target script can't be running at the same time
@@ -194,6 +197,7 @@ while listexists 'nox_multi' and not dead
     endif
 
     // ===== 4. Defensive =====
+    @setvar! HealFailed 0
     if diffhits >= HealPotDiff and timer 'healpot' >= 10000 and findtype 3852 self
         dclicktype 3852
         settimer 'healpot' 0
@@ -228,8 +232,12 @@ while listexists 'nox_multi' and not dead
             endfor
             if targetexists
                 target 'self'
+                settimer 'curepot' 0
+            else
+                // Refused (still recovering): no attack spells this pass,
+                // the next pass tries the cure again first
+                @setvar! HealFailed 1
             endif
-            settimer 'curepot' 0
         endif
     endif
 
@@ -256,8 +264,13 @@ while listexists 'nox_multi' and not dead
         endfor
         if targetexists
             target 'self'
+            // Only start the timer when the heal really went off
+            settimer 'gheal' 0
+        else
+            // Refused (still recovering): no attack spells this pass,
+            // the next pass tries the heal again first
+            @setvar! HealFailed 1
         endif
-        settimer 'gheal' 0
     endif
 
     if mana < 50 and timer 'mushroom' >= 60000
@@ -368,7 +381,11 @@ while listexists 'nox_multi' and not dead
     endif
 
     // ===== 8. Act =====
-    if PoisonT != 0 and mana >= 9 and findtype 3976 self
+    if HealFailed = 1
+        // A heal or cure was refused: no attack spells this pass,
+        // the next pass tries it again first
+        wait 100
+    elseif PoisonT != 0 and mana >= 9 and mana >= KeepMana and findtype 3976 self
         cast 'Poison'
         // Wait for the cursor, but stop at once if the cast was refused
         for 25
@@ -397,7 +414,7 @@ while listexists 'nox_multi' and not dead
             settimer 'pstrike' 0
             overhead '[ POISON STRIKE ]' 77 StrikeT
         endif
-    elseif UpcastLethal = 1 and UpcastT != 0 and mana >= 9 and findtype 3976 self
+    elseif UpcastLethal = 1 and UpcastT != 0 and mana >= 9 and mana >= KeepMana and findtype 3976 self
         cast 'Poison'
         // Wait for the cursor, but stop at once if the cast was refused
         for 25

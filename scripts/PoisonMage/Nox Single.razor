@@ -51,6 +51,9 @@ endif
 // Heal thresholds (missing hit points)
 @setvar! HealPotDiff 30
 @setvar! GreaterHealDiff 30
+// Poison, Mana Drain and Curse are not cast below this much mana, so
+// there is always enough left for a Greater Heal (11). 0 = off
+@setvar! KeepMana 22
 
 // When the target dies: 1 = take the closest grey monster, 0 = stop
 @setvar! AutoNext 1
@@ -383,6 +386,7 @@ while listexists 'nox_single' and not dead
     endif
 
     // ===== 4. Defensive =====
+    @setvar! HealFailed 0
     if diffhits >= HealPotDiff and timer 'healpot' >= 10000 and findtype 3852 self
         dclicktype 3852
         settimer 'healpot' 0
@@ -417,8 +421,12 @@ while listexists 'nox_single' and not dead
             endfor
             if targetexists
                 target 'self'
+                settimer 'curepot' 0
+            else
+                // Refused (still recovering): no attack spells this pass,
+                // the next pass tries the cure again first
+                @setvar! HealFailed 1
             endif
-            settimer 'curepot' 0
         endif
     endif
 
@@ -445,8 +453,13 @@ while listexists 'nox_single' and not dead
         endfor
         if targetexists
             target 'self'
+            // Only start the timer when the heal really went off
+            settimer 'gheal' 0
+        else
+            // Refused (still recovering): no attack spells this pass,
+            // the next pass tries the heal again first
+            @setvar! HealFailed 1
         endif
-        settimer 'gheal' 0
     endif
 
     if mana < 50 and timer 'mushroom' >= 60000
@@ -545,13 +558,17 @@ while listexists 'nox_single' and not dead
             settimer 'lethalseen' 0
         endif
 
+        // A heal or cure was refused: skip all attack spells this pass
         @setvar! Acted 0
+        if HealFailed = 1
+            @setvar! Acted 1
+        endif
 
         // a) Keep the poison up. Poison is cast back to back until the label
         //    shows the wanted level (one extra cast after it lands is fine).
         //    If it never gets there (immune / resisting target), back off to
         //    one Poison every 5 s so the other spells still get cast.
-        if NeedPoison = 1 and mana >= 9 and findtype 3976 self
+        if Acted = 0 and NeedPoison = 1 and mana >= 9 and mana >= KeepMana and findtype 3976 self
             if timer 'lethalseen' < 8000 or timer 'poisontry' >= 5000
                 cast 'Poison'
                 // Wait for the cursor, but stop at once if the cast was refused
@@ -689,7 +706,7 @@ while listexists 'nox_single' and not dead
             if not inlist 'lastdrain' noxMain
                 settimer 'manadrain' 99999
             endif
-            if timer 'manadrain' >= 60000 and mana >= 11 and findtype 3962 self and findtype 3974 self and findtype 3981 self
+            if timer 'manadrain' >= 60000 and mana >= 11 and mana >= KeepMana and findtype 3962 self and findtype 3974 self and findtype 3981 self
                 cast 'Mana Drain'
                 // Wait for the cursor, but stop at once if the cast was refused
                 for 20
@@ -714,7 +731,7 @@ while listexists 'nox_single' and not dead
             if not inlist 'lastcurse' noxMain
                 settimer 'curse' 999999
             endif
-            if timer 'curse' >= 120000 and mana >= 11 and findtype 3972 self and findtype 3976 self and findtype 3980 self
+            if timer 'curse' >= 120000 and mana >= 11 and mana >= KeepMana and findtype 3972 self and findtype 3976 self and findtype 3980 self
                 cast 'Curse'
                 // Wait for the cursor, but stop at once if the cast was refused
                 for 20
