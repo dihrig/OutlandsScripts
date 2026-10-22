@@ -1,0 +1,122 @@
+// ==========================================================
+// Single Mage Buffs - puts up every missing buff once, then stops
+// Press the hotkey before (or between) fights.
+// Potions first (no cast time), then the buff spells one after another.
+// Ends a running single target rotation first, so press the rotation
+// hotkey again afterwards.
+// ==========================================================
+
+// ===== CONFIG =====
+// Spells (1 = on, 0 = off)
+@setvar! UseProtection 1
+@setvar! UseReactiveArmor 1
+@setvar! UseMagicReflect 1
+@setvar! UseCunning 1
+// Potions (1 = on, 0 = off)
+@setvar! UseStrPot 1
+@setvar! UseAgiPot 1
+@setvar! UseResistPot 1
+// Buff spells are not cast below this much mana, so there is always
+// enough left for a Greater Heal (11). 0 = off
+@setvar! KeepMana 22
+
+// A rotation script must not keep its on/off switch while this runs
+if listexists 'nox_single'
+    removelist 'nox_single'
+endif
+if listexists 'nox_multi'
+    removelist 'nox_multi'
+endif
+if targetexists
+    hotkey 'Cancel Current Target'
+    wait 100
+endif
+// Wait for a running cast to finish
+for 30
+    if not casting
+        break
+    endif
+    wait 100
+endfor
+
+// ===== Potions =====
+if UseStrPot = 1 and not findbuff 'Strength' and findtype 3849 self
+    dclicktype 3849
+    wait 600
+endif
+if UseAgiPot = 1 and not findbuff 'Agility' and findtype 3848 self
+    dclicktype 3848
+    wait 600
+endif
+if UseResistPot = 1 and not findbuff 'Greater Magic Resist Potion' and not findbuff 'Magic Resist Potion' and findtype 3846 self
+    dclicktype 3846
+    wait 600
+endif
+
+// ===== Spells =====
+// Protection: Garlic + Ginseng + Sulfurous Ash, 6 mana
+if UseProtection = 1 and not findbuff 'Protection' and mana >= KeepMana and mana >= 17 and findtype 3972 self and findtype 3973 self and findtype 3980 self
+    clearsysmsg
+    cast 'Protection'
+    wait 300
+    for 30
+        if not casting
+            break
+        endif
+        wait 100
+    endfor
+    wait 500
+endif
+
+// Reactive Armor: Garlic + Sulfurous Ash + Spider's Silk, 4 mana
+if UseReactiveArmor = 1 and not findbuff 'Reactive Armor' and mana >= KeepMana and mana >= 15 and findtype 3972 self and findtype 3980 self and findtype 3981 self
+    clearsysmsg
+    cast 'Reactive Armor'
+    wait 300
+    for 30
+        if not casting
+            break
+        endif
+        wait 100
+    endfor
+    wait 500
+endif
+
+// Magic Reflection: Garlic + Mandrake Root + Spider's Silk, 14 mana
+if UseMagicReflect = 1 and not findbuff 'Magic Reflection' and mana >= KeepMana and mana >= 25 and findtype 3972 self and findtype 3974 self and findtype 3981 self
+    clearsysmsg
+    cast 'Magic Reflection'
+    wait 300
+    for 30
+        if not casting
+            break
+        endif
+        wait 100
+    endfor
+    wait 500
+endif
+
+// Cunning: Mandrake Root + Nightshade, 6 mana, targets yourself
+if UseCunning = 1 and not findbuff 'Cunning' and mana >= KeepMana and mana >= 15 and findtype 3974 self and findtype 3976 self
+    clearsysmsg
+    cast 'Cunning'
+    // Wait for the cursor, but stop at once if the cast was refused
+    for 20
+        if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+            break
+        endif
+        wait 100
+    endfor
+    if targetexists
+        target 'self'
+    endif
+    wait 300
+    for 30
+        if not casting
+            break
+        endif
+        wait 100
+    endfor
+endif
+
+overhead 'Buffs done' 68
