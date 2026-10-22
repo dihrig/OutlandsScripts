@@ -1,0 +1,420 @@
+// ==========================================================
+// Single Mage Explo - pure mage single target rotation with a fixed
+// spell order (no Necromancy, no Poison, no Tracking, no buffs)
+// Press the hotkey: a target cursor appears, click your enemy.
+// Press again to stop.
+// Buffs are not handled here: use the 'Single Mage Buffs' script.
+//
+// Every pass: heals/cures/potions/mushroom first, then Leyline,
+// then the next step of this fixed rotation (repeats forever):
+//   1. Explosion (spell)
+//   2. Explosion potion (skipped while on cooldown)
+//   3. Flamestrike if mana > FSMana, otherwise Mind Blast
+// ==========================================================
+
+// ===== CONFIG =====
+// Rotation spells only at or above this mana.
+// 11 = cast until the mana for one more Mind Blast is gone.
+// Raise it (e.g. 22) to always keep a Greater Heal in reserve.
+@setvar! NukeMana 11
+// Step 1: Explosion spell (1 = on, 0 = off)
+@setvar! UseExplosion 1
+// Step 2: Explosion potion (1 = on, 0 = off). Needs Alchemy 80+.
+// Set to 0 in groups if you're not sure they spare your friends.
+@setvar! UseExplo 1
+// Explosion potion cooldown in ms. While it runs, step 2 is skipped.
+@setvar! ExploCD 15000
+// Step 3: Flamestrike while mana is above this, otherwise Mind Blast.
+// Flamestrike costs 40 mana.
+@setvar! UseFlamestrike 1
+@setvar! FSMana 80
+
+// Leyline (Arcane weapon ability 2) on cooldown (1 = on, 0 = off)
+// Not a spell, so it never takes a rotation step.
+@setvar! UseLeyline 1
+// Wait this long after Leyline went off before trying again (ms).
+// 60000 comes from community scripts - CHECK IN-GAME: if your Leyline
+// cooldown bar is shorter, lower this. A try that is still on cooldown
+// is simply retried 3 s later.
+@setvar! LeylineCD 60000
+
+// Heal thresholds (missing hit points)
+@setvar! HealPotDiff 30
+@setvar! GreaterHealDiff 30
+
+// When the target dies: 1 = take the closest grey monster, 0 = stop
+@setvar! AutoNext 1
+
+// ===== Toggle =====
+// Shares its on/off switch with Nox Single and Single Mage, so only one
+// of them runs. The multi target script can't be running at the same
+// time either.
+if listexists 'nox_multi'
+    removelist 'nox_multi'
+endif
+if listexists 'nox_single'
+    removelist 'nox_single'
+    if targetexists
+        hotkey 'Cancel Current Target'
+    endif
+    overhead 'Single target OFF' 33
+    stop
+endif
+createlist 'nox_single'
+
+// Reset state flags from any previous run
+if listexists 'f_leytry'
+    removelist 'f_leytry'
+endif
+if targetexists
+    hotkey 'Cancel Current Target'
+    wait 100
+endif
+
+// ===== Timers (99999 = ready immediately) =====
+if not timerexists 'healpot'
+    createtimer 'healpot'
+    settimer 'healpot' 99999
+endif
+if not timerexists 'curepot'
+    createtimer 'curepot'
+    settimer 'curepot' 99999
+endif
+if not timerexists 'gheal'
+    createtimer 'gheal'
+    settimer 'gheal' 99999
+endif
+if not timerexists 'mushroom'
+    createtimer 'mushroom'
+    settimer 'mushroom' 99999
+endif
+if not timerexists 'mushtry'
+    createtimer 'mushtry'
+    settimer 'mushtry' 99999
+endif
+if not timerexists 'explo'
+    createtimer 'explo'
+    settimer 'explo' 99999
+endif
+if not timerexists 'leyline'
+    createtimer 'leyline'
+    settimer 'leyline' 99999
+endif
+if not timerexists 'leytry'
+    createtimer 'leytry'
+    settimer 'leytry' 99999
+endif
+if not timerexists 'attackref'
+    createtimer 'attackref'
+    settimer 'attackref' 99999
+endif
+
+// Rotation always starts with step 1 (Explosion)
+@setvar! RotStep 1
+
+// ==========================================================
+// Pick the target
+// ==========================================================
+// A Last Target pressed while no cursor was open is queued by Razor and
+// would grab our next cursor, picking the old target
+if queued
+    hotkey 'Clear Target Queue'
+endif
+overhead 'Select enemy' 68
+// No value = Razor opens a target cursor and waits for your click
+setvar noxMain
+
+if dead noxMain or not find noxMain ground -1 -1 12 or find noxMain ground -1 -1 0
+    overhead 'No valid target' 33
+    removelist 'nox_single'
+    stop
+endif
+
+warmode on
+attack noxMain
+settimer 'attackref' 0
+if followers > 0
+    say 'All kill'
+    waitfortarget 1500
+    if targetexists
+        target noxMain
+    endif
+endif
+
+// ==========================================================
+// Rotation
+// ==========================================================
+overhead 'Rotating !' 68
+clearsysmsg
+
+while listexists 'nox_single' and not dead
+
+    // ===== 1. Read the journal into flags =====
+    // Did the last Leyline try go off? Refused = still on cooldown, retry in 3 s
+    if listexists 'f_leytry'
+        removelist 'f_leytry'
+        if insysmsg 'cannot perform that ability yet'
+            // still on cooldown
+        else
+            settimer 'leyline' 0
+        endif
+    endif
+    if insysmsg 'consume a magic mushroom'
+        settimer 'mushroom' 0
+    endif
+
+    // ===== 2. Clear once, after everything has been read =====
+    clearsysmsg
+
+    // A stray cursor must never be used by a self-target spell
+    if targetexists
+        hotkey 'Cancel Current Target'
+        wait 100
+    endif
+    // A Last Target pressed while no cursor was open is queued by Razor and
+    // would grab our next cursor, sending the spell to the old target
+    if queued
+        hotkey 'Clear Target Queue'
+    endif
+
+    // ===== 3. Defensive (always first) =====
+    @setvar! HealFailed 0
+    if diffhits >= HealPotDiff and timer 'healpot' >= 10000 and findtype 3852 self
+        dclicktype 3852
+        settimer 'healpot' 0
+        wait 200
+    endif
+
+    if poisoned and timer 'curepot' >= 2000
+        if findtype 3847 self
+            dclicktype 3847
+            settimer 'curepot' 0
+            wait 200
+        elseif mana >= 6 and findtype 3972 self and findtype 3973 self
+            // Wait for a running cast to finish and drop any stray cursor,
+            // so 'target self' can only ever answer this heal/cure
+            for 25
+                if not casting
+                    break
+                endif
+                wait 100
+            endfor
+            if targetexists
+                hotkey 'Cancel Current Target'
+                wait 100
+            endif
+            cast 'Cure'
+            // Wait for the cursor, but stop at once if the cast was refused
+            for 20
+                if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                    break
+                endif
+                wait 100
+            endfor
+            if targetexists
+                target 'self'
+                settimer 'curepot' 0
+            else
+                // Refused (still recovering): no attack spells this pass,
+                // the next pass tries the cure again first
+                @setvar! HealFailed 1
+            endif
+        endif
+    endif
+
+    if diffhits >= GreaterHealDiff and mana >= 11 and timer 'gheal' >= 2500 and findtype 3972 self and findtype 3973 self and findtype 3974 self and findtype 3981 self
+        // Wait for a running cast to finish and drop any stray cursor,
+        // so 'target self' can only ever answer this heal/cure
+        for 25
+            if not casting
+                break
+            endif
+            wait 100
+        endfor
+        if targetexists
+            hotkey 'Cancel Current Target'
+            wait 100
+        endif
+        cast 'Greater Heal'
+        // Wait for the cursor, but stop at once if the cast was refused
+        for 25
+            if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                break
+            endif
+            wait 100
+        endfor
+        if targetexists
+            target 'self'
+            // Only start the timer when the heal really went off
+            settimer 'gheal' 0
+        else
+            // Refused (still recovering): no attack spells this pass,
+            // the next pass tries the heal again first
+            @setvar! HealFailed 1
+        endif
+    endif
+
+    if mana < 50 and timer 'mushroom' >= 60000
+        if timer 'mushtry' >= 3000
+            dclicktype 29012
+            settimer 'mushtry' 0
+            wait 200
+        endif
+    endif
+
+    // ===== 4. Target still alive? =====
+    @setvar! HaveTarget 1
+    if dead noxMain or not find noxMain ground -1 -1 12 or find noxMain ground -1 -1 0
+        @setvar! HaveTarget 0
+        if AutoNext = 0
+            overhead 'Target gone - stopped' 53
+            removelist 'nox_single'
+            stop
+        endif
+        hotkey 'Target Closest Grey Monster'
+        wait 150
+        if insysmsg 'No one matching'
+            overhead 'Target gone - nothing nearby' 53
+            removelist 'nox_single'
+            stop
+        endif
+        @setvar! noxCand lasttarget
+        getlabel noxCand candLabel
+        if find noxCand ground -1 -1 0
+            // that's us - never a target
+        elseif "tame" in candLabel or "summoned" in candLabel
+            @ignore noxCand
+        else
+            @setvar! noxMain noxCand
+            @setvar! HaveTarget 1
+            // New enemy: start over with step 1
+            @setvar! RotStep 1
+            attack noxMain
+            settimer 'attackref' 0
+            if followers > 0
+                say 'All kill'
+                waitfortarget 1500
+                if targetexists
+                    target noxMain
+                endif
+            endif
+            overhead '[ NEW TARGET ]' 68 noxMain
+        endif
+    endif
+
+    // ===== 5. Combat =====
+    if HaveTarget = 1
+        if timer 'attackref' >= 3000
+            attack noxMain
+            settimer 'attackref' 0
+        endif
+
+        // Leyline on cooldown. Not a spell, so it never blocks a cast.
+        if UseLeyline = 1 and timer 'leyline' >= LeylineCD and timer 'leytry' >= 3000
+            say '[WeaponAbility2'
+            settimer 'leytry' 0
+            if not listexists 'f_leytry'
+                createlist 'f_leytry'
+            endif
+            wait 100
+            attack noxMain
+        endif
+
+        // A heal or cure was refused: no rotation step this pass
+        if HealFailed = 0
+
+            // Step 1: Explosion, Bloodmoss + Mandrake Root, 20 mana
+            if RotStep = 1
+                if UseExplosion = 1 and mana >= NukeMana and mana >= 20 and findtype 3963 self and findtype 3974 self
+                    cast 'Explosion'
+                    // Wait for the cursor, but stop at once if the cast was refused
+                    for 20
+                        if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                            break
+                        endif
+                        wait 100
+                    endfor
+                    if targetexists
+                        target noxMain
+                        // Only move on when the cast really went off
+                        @setvar! RotStep 2
+                    endif
+                else
+                    // Off, no mana or no reagents: skip this step
+                    @setvar! RotStep 2
+                endif
+
+            // Step 2: Explosion potion, skipped while on cooldown
+            elseif RotStep = 2
+                if UseExplo = 1 and skill 'Alchemy' >= 80 and timer 'explo' >= ExploCD and findtype 3853 self
+                    // Let the Explosion cast finish first
+                    for 30
+                        if not casting
+                            break
+                        endif
+                        wait 100
+                    endfor
+                    if targetexists
+                        hotkey 'Cancel Current Target'
+                        wait 100
+                    endif
+                    dclicktype 3853
+                    waitfortarget 2000
+                    if targetexists
+                        target noxMain
+                    endif
+                    settimer 'explo' 0
+                    wait 200
+                endif
+                @setvar! RotStep 3
+
+            // Step 3: Flamestrike above FSMana, otherwise Mind Blast
+            else
+                if UseFlamestrike = 1 and mana > FSMana and findtype 3980 self and findtype 3981 self
+                    // Flamestrike: Sulfurous Ash + Spider's Silk, 40 mana
+                    cast 'Flamestrike'
+                    // Wait for the cursor, but stop at once if the cast was refused
+                    for 20
+                        if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                            break
+                        endif
+                        wait 100
+                    endfor
+                    if targetexists
+                        target noxMain
+                        // Only start over when the cast really went off
+                        @setvar! RotStep 1
+                    endif
+                elseif mana >= NukeMana and findtype 3962 self and findtype 3974 self and findtype 3976 self and findtype 3980 self
+                    // Mind Blast: Black Pearl, Mandrake Root, Nightshade, Sulfurous Ash
+                    cast 'Mind Blast'
+                    // Wait for the cursor, but stop at once if the cast was refused
+                    for 20
+                        if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                            break
+                        endif
+                        wait 100
+                    endfor
+                    if targetexists
+                        target noxMain
+                        // Only start over when the cast really went off
+                        @setvar! RotStep 1
+                    endif
+                else
+                    // No mana or no reagents: start over
+                    @setvar! RotStep 1
+                endif
+            endif
+        endif
+    endif
+
+    wait 100
+endwhile
+
+if listexists 'nox_single'
+    removelist 'nox_single'
+endif
+if listexists 'f_leytry'
+    removelist 'f_leytry'
+endif
+overhead 'Single target stopped' 33
