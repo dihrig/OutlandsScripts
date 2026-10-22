@@ -10,6 +10,8 @@
 // Every pass: heals/cures/potions first. Then the first
 // action whose conditions are met (one action per pass):
 //   1. Mushroom below MushroomMana (does not count as the action)
+//      Leyline on cooldown at LeylineMana or less
+//      (not a spell, does not count as the action either)
 //   2. Greater Explosion potion every 15 s
 //   3. Curse every 58 s, and at once on a new target
 //   4. Lightning every 15 s (Grimoire proc)
@@ -18,12 +20,21 @@
 //   7. Flamestrike at FSMana+ mana, or FSSoulfireMana+ with Soulfire up
 //   8. Harm as cheap filler (does not reset the Harm proc timer)
 // Every step except the mushroom can be switched off in the CONFIG.
-// Soulfire, Leyline, Catalyst and Mana Drain stay manual.
+// Soulfire, Catalyst and Mana Drain stay manual.
 // ==========================================================
 
 // ===== CONFIG =====
 // 1. Eat the magic mushroom below this mana (60 s cooldown)
 @setvar! MushroomMana 75
+// Leyline (Arcane weapon ability 2) on cooldown at this much mana or
+// less (1 = on, 0 = off)
+@setvar! UseLeyline 1
+@setvar! LeylineMana 80
+// Wait this long after Leyline went off before trying again (ms).
+// 60000 comes from community scripts - CHECK IN-GAME: if your Leyline
+// cooldown bar is shorter, lower this. A try that is still on cooldown
+// is simply retried 3 s later.
+@setvar! LeylineCD 60000
 // 2. Greater Explosion potion every ExploEvery ms (1 = on, 0 = off).
 // Set to 0 in groups if you're not sure they spare your friends.
 @setvar! UseExplo 1
@@ -102,6 +113,14 @@ if not timerexists 'attackref'
     settimer 'attackref' 99999
 endif
 // Rotation timers, each reset when its action starts
+if not timerexists 'leyline'
+    createtimer 'leyline'
+    settimer 'leyline' 99999
+endif
+if not timerexists 'leytry'
+    createtimer 'leytry'
+    settimer 'leytry' 99999
+endif
 if not timerexists 'rmushroom'
     createtimer 'rmushroom'
     settimer 'rmushroom' 99999
@@ -197,6 +216,13 @@ clearsysmsg
 while listexists 'nox_single' and not dead
 
     // ===== 1. Clear the journal =====
+    // Did the last Leyline try go off? Refused = still on cooldown, retry in 3 s
+    if listexists 'f_leytry'
+        removelist 'f_leytry'
+        if not insysmsg 'cannot perform that ability yet'
+            settimer 'leyline' 0
+        endif
+    endif
     clearsysmsg
 
     // A stray cursor must never be used by a self-target spell
@@ -480,6 +506,20 @@ while listexists 'nox_single' and not dead
                     endif
                 endif
             endif
+        endif
+        // Leyline on cooldown at LeylineMana or less,
+        // same pattern as Nox Single. Not a spell, so it never blocks a cast.
+        // It runs after the spell, so no cast clears the journal before the
+        // next pass checks whether it was refused.
+        if UseLeyline = 1 and mana <= LeylineMana and timer 'leyline' >= LeylineCD and timer 'leytry' >= 3000
+            say '[WeaponAbility2'
+            settimer 'leytry' 0
+            if not listexists 'f_leytry'
+                createlist 'f_leytry'
+            endif
+            // Give a refusal time to reach the journal
+            wait 300
+            attack noxMain
         endif
     endif
 
