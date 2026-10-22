@@ -1,0 +1,557 @@
+// ==========================================================
+// mageSingleRotation - Arcane staff mage, single target
+// Start/stop and heal/cure logic are the same as in Nox Single,
+// but the enemy is picked with a plain target cursor (no Poison).
+// Only the offensive part is new: a priority list.
+// Press the hotkey: a target cursor appears, click your enemy.
+// If your last target is still alive and in range, the script
+// continues on it instead (no cursor). Press again to stop.
+//
+// Every pass: heals/cures/potions first. Then the first
+// action whose conditions are met (one action per pass):
+//   1. Mushroom below MushroomMana (does not count as the action)
+//   2. Greater Explosion potion every 15 s
+//   3. Curse every 58 s, and at once on a new target
+//   4. Lightning every 15 s (Grimoire proc)
+//   5. Harm every 15 s (Grimoire proc)
+//   6. Fireball every 15 s (Grimoire proc)
+//   7. Flamestrike at FSMana+ mana, or FSSoulfireMana+ with Soulfire up
+//   8. Harm as cheap filler (does not reset the Harm proc timer)
+// Every step except the mushroom can be switched off in the CONFIG.
+// Soulfire, Leyline, Catalyst and Mana Drain stay manual.
+// ==========================================================
+
+// ===== CONFIG =====
+// 1. Eat the magic mushroom below this mana (60 s cooldown)
+@setvar! MushroomMana 75
+// 2. Greater Explosion potion every ExploEvery ms (1 = on, 0 = off).
+// Set to 0 in groups if you're not sure they spare your friends.
+@setvar! UseExplo 1
+@setvar! ExploEvery 15000
+// 3. Curse every CurseEvery ms (1 = on, 0 = off)
+@setvar! UseCurse 1
+@setvar! CurseEvery 58000
+// 4./5./6. Lightning, Harm and Fireball Grimoire procs every ProcEvery ms
+// (1 = on, 0 = off)
+@setvar! UseLightning 1
+@setvar! UseHarm 1
+@setvar! UseFireball 1
+@setvar! ProcEvery 15000
+// 7. Flamestrike at this much mana, or at FSSoulfireMana while the
+// Soulfire buff is active (1 = on, 0 = off)
+@setvar! UseFlamestrike 1
+@setvar! FSMana 60
+@setvar! FSSoulfireMana 40
+// 8. Harm as filler when nothing else is due (1 = on, 0 = off)
+@setvar! UseHarmFiller 1
+
+// Heal thresholds (missing hit points)
+@setvar! HealPotDiff 30
+@setvar! GreaterHealDiff 30
+
+// When the target dies: 1 = take the closest grey monster, 0 = stop
+@setvar! AutoNext 1
+
+// On start, continue on your last target if it is still alive and in
+// range (1 = on, 0 = always ask with a target cursor)
+@setvar! ResumeLastTarget 1
+
+// ===== Toggle =====
+// The multi target script can't be running at the same time
+if listexists 'nox_multi'
+    removelist 'nox_multi'
+endif
+if listexists 'nox_single'
+    removelist 'nox_single'
+    if targetexists
+        hotkey 'Cancel Current Target'
+    endif
+    overhead 'Single target OFF' 33
+    stop
+endif
+createlist 'nox_single'
+
+// Drop a cursor left over from a previous run
+if targetexists
+    hotkey 'Cancel Current Target'
+    wait 100
+endif
+
+// Remembers which enemy was cursed last (Curse is due at once on a new
+// one). Kept between runs, so a restart on the same enemy doesn't curse
+// it again before CurseEvery is up.
+if not listexists 'rcursed'
+    createlist 'rcursed'
+endif
+
+// ===== Timers (99999 = ready immediately) =====
+if not timerexists 'healpot'
+    createtimer 'healpot'
+    settimer 'healpot' 99999
+endif
+if not timerexists 'curepot'
+    createtimer 'curepot'
+    settimer 'curepot' 99999
+endif
+if not timerexists 'gheal'
+    createtimer 'gheal'
+    settimer 'gheal' 99999
+endif
+if not timerexists 'attackref'
+    createtimer 'attackref'
+    settimer 'attackref' 99999
+endif
+// Rotation timers, each reset when its action starts
+if not timerexists 'rmushroom'
+    createtimer 'rmushroom'
+    settimer 'rmushroom' 99999
+endif
+if not timerexists 'rexplo'
+    createtimer 'rexplo'
+    settimer 'rexplo' 99999
+endif
+// Kept between runs too (see 'rcursed' above)
+if not timerexists 'rcurse'
+    createtimer 'rcurse'
+    settimer 'rcurse' 999999
+endif
+if not timerexists 'rlightning'
+    createtimer 'rlightning'
+    settimer 'rlightning' 99999
+endif
+if not timerexists 'rharm'
+    createtimer 'rharm'
+    settimer 'rharm' 99999
+endif
+if not timerexists 'rfireball'
+    createtimer 'rfireball'
+    settimer 'rfireball' 99999
+endif
+
+// ==========================================================
+// PHASE 1: pick the target (last target, or a target cursor)
+// ==========================================================
+@setvar! NoxResume 0
+
+// The enemy lives in its own variable, so other target hotkeys can't move it.
+// Last target still alive and in range? Then continue on it.
+if ResumeLastTarget = 1
+    @setvar! noxCand lasttarget
+    if find noxCand ground -1 -1 12
+        if dead noxCand or find noxCand ground -1 -1 0
+            // dead, or that's us
+        else
+            getlabel noxCand candLabel
+            if "tame" in candLabel or "summoned" in candLabel
+                // own pet - ask for a new enemy
+            else
+                @setvar! noxMain noxCand
+                @setvar! NoxResume 1
+            endif
+        endif
+    endif
+endif
+
+if NoxResume = 1
+    if queued
+        hotkey 'Clear Target Queue'
+    endif
+    clearsysmsg
+    overhead '[ CONTINUE ]' 68 noxMain
+else
+    // A Last Target pressed while no cursor was open is queued by Razor and
+    // would grab our next cursor, picking the old target
+    if queued
+        hotkey 'Clear Target Queue'
+    endif
+    overhead 'Select enemy' 68
+    clearsysmsg
+    // No value = Razor opens a plain target cursor and waits for your click
+    // (no spell, so nothing is cast on the enemy)
+    setvar noxMain
+
+    if dead noxMain or not find noxMain ground -1 -1 12 or find noxMain ground -1 -1 0
+        overhead 'No valid target' 33
+        removelist 'nox_single'
+        stop
+    endif
+endif
+
+warmode on
+attack noxMain
+settimer 'attackref' 0
+if followers > 0
+    say 'All kill'
+    waitfortarget 1500
+    if targetexists
+        target noxMain
+    endif
+endif
+
+// ==========================================================
+// PHASE 2: rotation
+// ==========================================================
+overhead 'Rotating !' 68
+clearsysmsg
+
+while listexists 'nox_single' and not dead
+
+    // ===== 1. Clear the journal =====
+    clearsysmsg
+
+    // A stray cursor must never be used by a self-target spell
+    if targetexists
+        hotkey 'Cancel Current Target'
+        wait 100
+    endif
+    // A Last Target pressed while no cursor was open is queued by Razor and
+    // would grab our next cursor, sending the spell to the old target
+    if queued
+        hotkey 'Clear Target Queue'
+    endif
+
+    // ===== 2. Defensive =====
+    @setvar! HealFailed 0
+    if diffhits >= HealPotDiff and timer 'healpot' >= 10000 and findtype 3852 self
+        dclicktype 3852
+        settimer 'healpot' 0
+        wait 200
+    endif
+
+    if poisoned and timer 'curepot' >= 2000
+        if findtype 3847 self
+            dclicktype 3847
+            settimer 'curepot' 0
+            wait 200
+        elseif mana >= 6 and findtype 3972 self and findtype 3973 self
+            // Wait for a running cast to finish and drop any stray cursor,
+            // so 'target self' can only ever answer this heal/cure
+            for 25
+                if not casting
+                    break
+                endif
+                wait 100
+            endfor
+            if targetexists
+                hotkey 'Cancel Current Target'
+                wait 100
+            endif
+            cast 'Cure'
+            // Wait for the cursor, but stop at once if the cast was refused
+            for 20
+                if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                    break
+                endif
+                wait 100
+            endfor
+            if targetexists
+                target 'self'
+                settimer 'curepot' 0
+            else
+                // Refused (still recovering): no attack spells this pass,
+                // the next pass tries the cure again first
+                @setvar! HealFailed 1
+            endif
+        endif
+    endif
+
+    if diffhits >= GreaterHealDiff and mana >= 11 and timer 'gheal' >= 2500 and findtype 3972 self and findtype 3973 self and findtype 3974 self and findtype 3981 self
+        // Wait for a running cast to finish and drop any stray cursor,
+        // so 'target self' can only ever answer this heal/cure
+        for 25
+            if not casting
+                break
+            endif
+            wait 100
+        endfor
+        if targetexists
+            hotkey 'Cancel Current Target'
+            wait 100
+        endif
+        cast 'Greater Heal'
+        // Wait for the cursor, but stop at once if the cast was refused
+        for 25
+            if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                break
+            endif
+            wait 100
+        endfor
+        if targetexists
+            target 'self'
+            // Only start the timer when the heal really went off
+            settimer 'gheal' 0
+        else
+            // Refused (still recovering): no attack spells this pass,
+            // the next pass tries the heal again first
+            @setvar! HealFailed 1
+        endif
+    endif
+
+    // ===== 3. Target still alive? =====
+    @setvar! HaveTarget 1
+    if dead noxMain or not find noxMain ground -1 -1 12 or find noxMain ground -1 -1 0
+        @setvar! HaveTarget 0
+        if AutoNext = 0
+            overhead 'Target gone - stopped' 53
+            removelist 'nox_single'
+            stop
+        endif
+        hotkey 'Target Closest Grey Monster'
+        wait 150
+        if insysmsg 'No one matching'
+            overhead 'Target gone - nothing nearby' 53
+            removelist 'nox_single'
+            stop
+        endif
+        @setvar! noxCand lasttarget
+        getlabel noxCand candLabel
+        if find noxCand ground -1 -1 0
+            // that's us - never a target
+        elseif "tame" in candLabel or "summoned" in candLabel
+            @ignore noxCand
+        else
+            @setvar! noxMain noxCand
+            @setvar! HaveTarget 1
+            // New enemy: Curse is due at once, Harm/Fireball timers keep running
+            settimer 'rcurse' 999999
+            attack noxMain
+            settimer 'attackref' 0
+            if followers > 0
+                say 'All kill'
+                waitfortarget 1500
+                if targetexists
+                    target noxMain
+                endif
+            endif
+            overhead '[ NEW TARGET ]' 68 noxMain
+        endif
+    endif
+
+    // ===== 4. Rotation =====
+    if HaveTarget = 1
+        if timer 'attackref' >= 3000
+            attack noxMain
+            settimer 'attackref' 0
+        endif
+
+        // 1. Mushroom: not the action for this pass, the list goes on
+        if mana < MushroomMana and timer 'rmushroom' >= 60000 and findtype 29012 self
+            dclicktype 29012
+            settimer 'rmushroom' 0
+            wait 200
+        endif
+
+        // Is Curse due? Every CurseEvery, or at once on a new target
+        @setvar! CurseDue 0
+        if timer 'rcurse' >= CurseEvery
+            @setvar! CurseDue 1
+        elseif not inlist 'rcursed' noxMain
+            @setvar! CurseDue 1
+        endif
+        // Enough mana for Flamestrike? Less is needed while Soulfire is up
+        @setvar! FSOk 0
+        if mana >= FSMana
+            @setvar! FSOk 1
+        elseif findbuff 'Soulfire' and mana >= FSSoulfireMana
+            @setvar! FSOk 1
+        endif
+
+        // A refused heal or cure means no action this pass
+        if HealFailed = 0
+            // 2. Greater Explosion potion on the target
+            if UseExplo = 1 and timer 'rexplo' >= ExploEvery and findtype 3853 self
+                // Wait for a running cast to finish and drop any stray cursor
+                // first, so the potion's own cursor can't be cancelled or taken
+                for 25
+                    if not casting
+                        break
+                    endif
+                    wait 100
+                endfor
+                if targetexists
+                    hotkey 'Cancel Current Target'
+                    wait 100
+                endif
+                dclicktype 3853
+                settimer 'rexplo' 0
+                waitfortarget 2000
+                if targetexists
+                    target noxMain
+                endif
+                wait 200
+
+            // 3. Curse: due every CurseEvery, or at once on a new target.
+            // Garlic + Nightshade + Sulfurous Ash, 11 mana
+            elseif UseCurse = 1 and CurseDue = 1 and mana >= 11 and findtype 3972 self and findtype 3976 self and findtype 3980 self
+                cast 'Curse'
+                // Wait up to 3.5 s for the cursor (Flamestrike takes 2 s plus
+                // latency), but stop at once if the cast was refused. After the
+                // first 0.5 s, also stop if the cast ended without a cursor
+                // (interrupted or fizzled).
+                for 5
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
+                for 30
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    if not casting
+                        break
+                    endif
+                    wait 100
+                endfor
+                if targetexists
+                    target noxMain
+                    settimer 'rcurse' 0
+                    clearlist 'rcursed'
+                    pushlist 'rcursed' noxMain
+                endif
+
+            // 4. Lightning proc: Mandrake Root + Sulfurous Ash, 11 mana
+            elseif UseLightning = 1 and timer 'rlightning' >= ProcEvery and mana >= 11 and findtype 3974 self and findtype 3980 self
+                cast 'Lightning'
+                // Wait up to 3.5 s for the cursor (Flamestrike takes 2 s plus
+                // latency), but stop at once if the cast was refused. After the
+                // first 0.5 s, also stop if the cast ended without a cursor
+                // (interrupted or fizzled).
+                for 5
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
+                for 30
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    if not casting
+                        break
+                    endif
+                    wait 100
+                endfor
+                if targetexists
+                    target noxMain
+                    settimer 'rlightning' 0
+                endif
+
+            // 5. Harm proc: Nightshade + Spider's Silk, 6 mana
+            elseif UseHarm = 1 and timer 'rharm' >= ProcEvery and mana >= 6 and findtype 3976 self and findtype 3981 self
+                cast 'Harm'
+                // Wait up to 3.5 s for the cursor (Flamestrike takes 2 s plus
+                // latency), but stop at once if the cast was refused. After the
+                // first 0.5 s, also stop if the cast ended without a cursor
+                // (interrupted or fizzled).
+                for 5
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
+                for 30
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    if not casting
+                        break
+                    endif
+                    wait 100
+                endfor
+                if targetexists
+                    target noxMain
+                    settimer 'rharm' 0
+                endif
+
+            // 6. Fireball proc: Black Pearl, 9 mana
+            elseif UseFireball = 1 and timer 'rfireball' >= ProcEvery and mana >= 9 and findtype 3962 self
+                cast 'Fireball'
+                // Wait up to 3.5 s for the cursor (Flamestrike takes 2 s plus
+                // latency), but stop at once if the cast was refused. After the
+                // first 0.5 s, also stop if the cast ended without a cursor
+                // (interrupted or fizzled).
+                for 5
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
+                for 30
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    if not casting
+                        break
+                    endif
+                    wait 100
+                endfor
+                if targetexists
+                    target noxMain
+                    settimer 'rfireball' 0
+                endif
+
+            // 7. Flamestrike: Sulfurous Ash + Spider's Silk, 40 mana
+            elseif UseFlamestrike = 1 and FSOk = 1 and findtype 3980 self and findtype 3981 self
+                cast 'Flamestrike'
+                // Wait up to 3.5 s for the cursor (Flamestrike takes 2 s plus
+                // latency), but stop at once if the cast was refused. After the
+                // first 0.5 s, also stop if the cast ended without a cursor
+                // (interrupted or fizzled).
+                for 5
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
+                for 30
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    if not casting
+                        break
+                    endif
+                    wait 100
+                endfor
+                if targetexists
+                    target noxMain
+                    // nothing to track
+                endif
+
+            // 8. Harm as cheap filler - does NOT reset the Harm proc timer
+            elseif UseHarmFiller = 1 and mana >= 6 and findtype 3976 self and findtype 3981 self
+                cast 'Harm'
+                // Wait up to 3.5 s for the cursor (Flamestrike takes 2 s plus
+                // latency), but stop at once if the cast was refused. After the
+                // first 0.5 s, also stop if the cast ended without a cursor
+                // (interrupted or fizzled).
+                for 5
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
+                for 30
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    if not casting
+                        break
+                    endif
+                    wait 100
+                endfor
+                if targetexists
+                    target noxMain
+                    // filler: the proc timer keeps running
+                endif
+            endif
+        endif
+    endif
+
+    wait 100
+endwhile
+
+if listexists 'nox_single'
+    removelist 'nox_single'
+endif
+overhead 'Single target stopped' 33
