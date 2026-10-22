@@ -80,11 +80,12 @@ if targetexists
     wait 100
 endif
 
-// Remembers which enemy was cursed (Curse is due at once on a new one)
-if listexists 'rcursed'
-    removelist 'rcursed'
+// Remembers which enemy was cursed last (Curse is due at once on a new
+// one). Kept between runs, so a restart on the same enemy doesn't curse
+// it again before CurseEvery is up.
+if not listexists 'rcursed'
+    createlist 'rcursed'
 endif
-createlist 'rcursed'
 
 // ===== Timers (99999 = ready immediately) =====
 if not timerexists 'healpot'
@@ -116,10 +117,11 @@ if not timerexists 'rexplo'
     createtimer 'rexplo'
     settimer 'rexplo' 99999
 endif
+// Kept between runs too (see 'rcursed' above)
 if not timerexists 'rcurse'
     createtimer 'rcurse'
+    settimer 'rcurse' 999999
 endif
-settimer 'rcurse' 999999
 if not timerexists 'rharm'
     createtimer 'rharm'
     settimer 'rharm' 99999
