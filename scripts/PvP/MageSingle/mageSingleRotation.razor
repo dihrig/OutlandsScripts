@@ -223,7 +223,7 @@ while listexists 'nox_single' and not dead
             dclicktype 3847
             settimer 'curepot' 0
             wait 200
-        elseif mana >= 6 and findtype 3972 self and findtype 3973 self
+        elseif mana >= 6
             // Wait for a running cast to finish and drop any stray cursor,
             // so 'target self' can only ever answer this heal/cure
             for 25
@@ -255,7 +255,7 @@ while listexists 'nox_single' and not dead
         endif
     endif
 
-    if diffhits >= GreaterHealDiff and mana >= 11 and timer 'gheal' >= 2500 and findtype 3972 self and findtype 3973 self and findtype 3974 self and findtype 3981 self
+    if diffhits >= GreaterHealDiff and mana >= 11 and timer 'gheal' >= 2500
         // Wait for a running cast to finish and drop any stray cursor,
         // so 'target self' can only ever answer this heal/cure
         for 25
@@ -391,8 +391,8 @@ while listexists 'nox_single' and not dead
                 endif
 
             // 3. Curse: due every CurseEvery, or at once on a new target.
-            // Garlic + Nightshade + Sulfurous Ash, 11 mana
-            elseif UseCurse = 1 and CurseDue = 1 and mana >= 11 and findtype 3972 self and findtype 3976 self and findtype 3980 self
+            // 11 mana
+            elseif UseCurse = 1 and CurseDue = 1 and mana >= 11
                 clearsysmsg
                 cast 'Curse'
                 // A refusal comes at once, without one the cast has started
@@ -409,8 +409,8 @@ while listexists 'nox_single' and not dead
                     endif
                 endif
 
-            // 4. Lightning proc: Mandrake Root + Sulfurous Ash, 11 mana
-            elseif UseLightning = 1 and timer 'rlightning' >= ProcEvery and mana >= 11 and findtype 3974 self and findtype 3980 self
+            // 4. Lightning proc, 11 mana
+            elseif UseLightning = 1 and timer 'rlightning' >= ProcEvery and mana >= 11
                 clearsysmsg
                 cast 'Lightning'
                 // A refusal comes at once, without one the cast has started
@@ -424,8 +424,8 @@ while listexists 'nox_single' and not dead
                     endif
                 endif
 
-            // 5. Harm proc: Nightshade + Spider's Silk, 6 mana
-            elseif UseHarm = 1 and timer 'rharm' >= ProcEvery and mana >= 6 and findtype 3976 self and findtype 3981 self
+            // 5. Harm proc, 6 mana
+            elseif UseHarm = 1 and timer 'rharm' >= ProcEvery and mana >= 6
                 clearsysmsg
                 cast 'Harm'
                 // A refusal comes at once, without one the cast has started
@@ -439,8 +439,8 @@ while listexists 'nox_single' and not dead
                     endif
                 endif
 
-            // 6. Fireball proc: Black Pearl, 9 mana
-            elseif UseFireball = 1 and timer 'rfireball' >= ProcEvery and mana >= 9 and findtype 3962 self
+            // 6. Fireball proc, 9 mana
+            elseif UseFireball = 1 and timer 'rfireball' >= ProcEvery and mana >= 9
                 clearsysmsg
                 cast 'Fireball'
                 // A refusal comes at once, without one the cast has started
@@ -454,8 +454,8 @@ while listexists 'nox_single' and not dead
                     endif
                 endif
 
-            // 7. Flamestrike: Sulfurous Ash + Spider's Silk, 40 mana
-            elseif UseFlamestrike = 1 and FSOk = 1 and findtype 3980 self and findtype 3981 self
+            // 7. Flamestrike, 40 mana
+            elseif UseFlamestrike = 1 and FSOk = 1
                 clearsysmsg
                 cast 'Flamestrike'
                 // A refusal comes at once, without one the cast has started
@@ -468,7 +468,7 @@ while listexists 'nox_single' and not dead
                 endif
 
             // 8. Harm as cheap filler - does NOT reset the Harm proc timer
-            elseif UseHarmFiller = 1 and mana >= 6 and findtype 3976 self and findtype 3981 self
+            elseif UseHarmFiller = 1 and mana >= 6
                 clearsysmsg
                 cast 'Harm'
                 // A refusal comes at once, without one the cast has started
