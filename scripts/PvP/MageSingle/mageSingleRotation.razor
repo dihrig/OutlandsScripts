@@ -19,8 +19,6 @@
 //   8. Harm as cheap filler (does not reset the Harm proc timer)
 // Every step except the mushroom can be switched off in the CONFIG.
 // Soulfire, Leyline, Catalyst and Mana Drain stay manual.
-// DEBUG: the overhead lines with 'DEBUG' in the rotation are temporary.
-// Delete every line containing DEBUG once the rotation works.
 // ==========================================================
 
 // ===== CONFIG =====
@@ -379,15 +377,11 @@ while listexists 'nox_single' and not dead
 
             // 2. Greater Explosion potion on the target
             if UseExplo = 1 and timer 'rexplo' >= ExploEvery and findtype 3853 self
-                overhead 'DEBUG Explo: cast' 88
                 dclicktype 3853
                 settimer 'rexplo' 0
                 waitfortarget 2000
                 if targetexists
                     target noxMain
-                    overhead 'DEBUG Explo: targeted' 88
-                else
-                    overhead 'DEBUG Explo: no cursor' 88
                 endif
                 wait 200
                 // The potion's cursor must be closed before anything else
@@ -400,13 +394,10 @@ while listexists 'nox_single' and not dead
             // Garlic + Nightshade + Sulfurous Ash, 11 mana
             elseif UseCurse = 1 and CurseDue = 1 and mana >= 11 and findtype 3972 self and findtype 3976 self and findtype 3980 self
                 clearsysmsg
-                overhead 'DEBUG Curse: cast' 88
                 cast 'Curse'
                 // A refusal comes at once, without one the cast has started
                 wait 300
-                if insysmsg 'recovered' or insysmsg 'already casting'
-                    overhead 'DEBUG Curse: refused' 88
-                else
+                if not insysmsg 'recovered' and not insysmsg 'already casting'
                     // Reset now, so a failed targeting can't repeat this spell
                     settimer 'rcurse' 0
                     waitfortarget 3500
@@ -415,110 +406,77 @@ while listexists 'nox_single' and not dead
                         // Only a really answered cursor counts as cursed
                         clearlist 'rcursed'
                         pushlist 'rcursed' noxMain
-                        overhead 'DEBUG Curse: targeted' 88
-                    else
-                        overhead 'DEBUG Curse: no cursor' 88
                     endif
                 endif
 
             // 4. Lightning proc: Mandrake Root + Sulfurous Ash, 11 mana
             elseif UseLightning = 1 and timer 'rlightning' >= ProcEvery and mana >= 11 and findtype 3974 self and findtype 3980 self
                 clearsysmsg
-                overhead 'DEBUG Lightning: cast' 88
                 cast 'Lightning'
                 // A refusal comes at once, without one the cast has started
                 wait 300
-                if insysmsg 'recovered' or insysmsg 'already casting'
-                    overhead 'DEBUG Lightning: refused' 88
-                else
+                if not insysmsg 'recovered' and not insysmsg 'already casting'
                     // Reset now, so a failed targeting can't repeat this spell
                     settimer 'rlightning' 0
                     waitfortarget 3500
                     if targetexists
                         target noxMain
-                        overhead 'DEBUG Lightning: targeted' 88
-                    else
-                        overhead 'DEBUG Lightning: no cursor' 88
                     endif
                 endif
 
             // 5. Harm proc: Nightshade + Spider's Silk, 6 mana
             elseif UseHarm = 1 and timer 'rharm' >= ProcEvery and mana >= 6 and findtype 3976 self and findtype 3981 self
                 clearsysmsg
-                overhead 'DEBUG Harm: cast' 88
                 cast 'Harm'
                 // A refusal comes at once, without one the cast has started
                 wait 300
-                if insysmsg 'recovered' or insysmsg 'already casting'
-                    overhead 'DEBUG Harm: refused' 88
-                else
+                if not insysmsg 'recovered' and not insysmsg 'already casting'
                     // Reset now, so a failed targeting can't repeat this spell
                     settimer 'rharm' 0
                     waitfortarget 3500
                     if targetexists
                         target noxMain
-                        overhead 'DEBUG Harm: targeted' 88
-                    else
-                        overhead 'DEBUG Harm: no cursor' 88
                     endif
                 endif
 
             // 6. Fireball proc: Black Pearl, 9 mana
             elseif UseFireball = 1 and timer 'rfireball' >= ProcEvery and mana >= 9 and findtype 3962 self
                 clearsysmsg
-                overhead 'DEBUG Fireball: cast' 88
                 cast 'Fireball'
                 // A refusal comes at once, without one the cast has started
                 wait 300
-                if insysmsg 'recovered' or insysmsg 'already casting'
-                    overhead 'DEBUG Fireball: refused' 88
-                else
+                if not insysmsg 'recovered' and not insysmsg 'already casting'
                     // Reset now, so a failed targeting can't repeat this spell
                     settimer 'rfireball' 0
                     waitfortarget 3500
                     if targetexists
                         target noxMain
-                        overhead 'DEBUG Fireball: targeted' 88
-                    else
-                        overhead 'DEBUG Fireball: no cursor' 88
                     endif
                 endif
 
             // 7. Flamestrike: Sulfurous Ash + Spider's Silk, 40 mana
             elseif UseFlamestrike = 1 and FSOk = 1 and findtype 3980 self and findtype 3981 self
                 clearsysmsg
-                overhead 'DEBUG Flamestrike: cast' 88
                 cast 'Flamestrike'
                 // A refusal comes at once, without one the cast has started
                 wait 300
-                if insysmsg 'recovered' or insysmsg 'already casting'
-                    overhead 'DEBUG Flamestrike: refused' 88
-                else
+                if not insysmsg 'recovered' and not insysmsg 'already casting'
                     waitfortarget 3500
                     if targetexists
                         target noxMain
-                        overhead 'DEBUG Flamestrike: targeted' 88
-                    else
-                        overhead 'DEBUG Flamestrike: no cursor' 88
                     endif
                 endif
 
             // 8. Harm as cheap filler - does NOT reset the Harm proc timer
             elseif UseHarmFiller = 1 and mana >= 6 and findtype 3976 self and findtype 3981 self
                 clearsysmsg
-                overhead 'DEBUG Filler Harm: cast' 88
                 cast 'Harm'
                 // A refusal comes at once, without one the cast has started
                 wait 300
-                if insysmsg 'recovered' or insysmsg 'already casting'
-                    overhead 'DEBUG Filler Harm: refused' 88
-                else
+                if not insysmsg 'recovered' and not insysmsg 'already casting'
                     waitfortarget 3500
                     if targetexists
                         target noxMain
-                        overhead 'DEBUG Filler Harm: targeted' 88
-                    else
-                        overhead 'DEBUG Filler Harm: no cursor' 88
                     endif
                 endif
             endif
