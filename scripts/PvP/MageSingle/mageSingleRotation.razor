@@ -371,9 +371,20 @@ while listexists 'nox_single' and not dead
             elseif CurseDue = 1 and mana >= 11 and findtype 3972 self and findtype 3976 self and findtype 3980 self
                 cast 'Curse'
                 // Wait up to 3.5 s for the cursor (Flamestrike takes 2 s plus
-                // latency), but stop at once if the cast was refused
-                for 35
+                // latency), but stop at once if the cast was refused. After the
+                // first 0.5 s, also stop if the cast ended without a cursor
+                // (interrupted or fizzled).
+                for 5
                     if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
+                for 30
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    if not casting
                         break
                     endif
                     wait 100
@@ -389,9 +400,20 @@ while listexists 'nox_single' and not dead
             elseif timer 'rharm' >= ProcEvery and mana >= 6 and findtype 3976 self and findtype 3981 self
                 cast 'Harm'
                 // Wait up to 3.5 s for the cursor (Flamestrike takes 2 s plus
-                // latency), but stop at once if the cast was refused
-                for 35
+                // latency), but stop at once if the cast was refused. After the
+                // first 0.5 s, also stop if the cast ended without a cursor
+                // (interrupted or fizzled).
+                for 5
                     if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
+                for 30
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    if not casting
                         break
                     endif
                     wait 100
@@ -405,9 +427,20 @@ while listexists 'nox_single' and not dead
             elseif timer 'rfireball' >= ProcEvery and mana >= 9 and findtype 3962 self
                 cast 'Fireball'
                 // Wait up to 3.5 s for the cursor (Flamestrike takes 2 s plus
-                // latency), but stop at once if the cast was refused
-                for 35
+                // latency), but stop at once if the cast was refused. After the
+                // first 0.5 s, also stop if the cast ended without a cursor
+                // (interrupted or fizzled).
+                for 5
                     if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
+                for 30
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    if not casting
                         break
                     endif
                     wait 100
@@ -421,9 +454,20 @@ while listexists 'nox_single' and not dead
             elseif FSOk = 1 and findtype 3980 self and findtype 3981 self
                 cast 'Flamestrike'
                 // Wait up to 3.5 s for the cursor (Flamestrike takes 2 s plus
-                // latency), but stop at once if the cast was refused
-                for 35
+                // latency), but stop at once if the cast was refused. After the
+                // first 0.5 s, also stop if the cast ended without a cursor
+                // (interrupted or fizzled).
+                for 5
                     if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
+                for 30
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    if not casting
                         break
                     endif
                     wait 100
@@ -437,9 +481,20 @@ while listexists 'nox_single' and not dead
             elseif mana >= 6 and findtype 3976 self and findtype 3981 self
                 cast 'Harm'
                 // Wait up to 3.5 s for the cursor (Flamestrike takes 2 s plus
-                // latency), but stop at once if the cast was refused
-                for 35
+                // latency), but stop at once if the cast was refused. After the
+                // first 0.5 s, also stop if the cast ended without a cursor
+                // (interrupted or fizzled).
+                for 5
                     if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
+                for 30
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    if not casting
                         break
                     endif
                     wait 100
