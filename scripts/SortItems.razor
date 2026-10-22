@@ -4,10 +4,39 @@
 //    pushlist 'routes' 'bag'      -> next entry is a destination bag
 //    pushlist 'routes' 0x........ -> bag serial (from >info: Serial)
 //    pushlist 'routes' 0x....     -> item ID   (from >info: ID)
+//  First run asks you to target your loot bag.
 // ==========================================================
 
-// ---------- SOURCE ----------
-setvar 'lootbag' 0x516BB632
+// ---------- LOOT BAG (asked once, remembered) ----------
+// The loot bag is saved in the Razor variable 'lootbag', shared by
+// RecycleLootBag and SortItems. If that bag is not in your backpack
+// or within 2 tiles, the script asks you to target a new one.
+@setvar! 'bagfound' 0
+if varexist 'lootbag'
+    if find 'lootbag' backpack
+        @setvar! 'bagfound' 1
+    elseif find 'lootbag' ground -1 -1 2
+        @setvar! 'bagfound' 1
+    endif
+endif
+if bagfound = 0
+    if targetexists
+        hotkey 'Cancel Current Target'
+    endif
+    overhead 'Target your loot bag' 88
+    @setvar 'lootbag'
+    wait 300
+    if find 'lootbag' backpack
+        @setvar! 'bagfound' 1
+    elseif find 'lootbag' ground -1 -1 2
+        @setvar! 'bagfound' 1
+    endif
+    if bagfound = 0
+        overhead 'Loot bag not found - keep it in your backpack' 34
+        stop
+    endif
+    overhead 'Loot bag saved' 68
+endif
 
 // ---------- CONTAINERS TO OPEN (outer before inner) ----------
 @removelist 'opencont'
