@@ -216,6 +216,13 @@ clearsysmsg
 while listexists 'nox_single' and not dead
 
     // ===== 1. Clear the journal =====
+    // Did the last Leyline try go off? Refused = still on cooldown, retry in 3 s
+    if listexists 'f_leytry'
+        removelist 'f_leytry'
+        if not insysmsg 'cannot perform that ability yet'
+            settimer 'leyline' 0
+        endif
+    endif
     clearsysmsg
 
     // A stray cursor must never be used by a self-target spell
@@ -360,27 +367,6 @@ while listexists 'nox_single' and not dead
             wait 200
         endif
 
-        // Leyline on cooldown while mana is below maxmana - LeylineMissing.
-        // Not a spell, so it never blocks a cast and the list goes on.
-        if UseLeyline = 1 and diffmana > LeylineMissing and timer 'leyline' >= LeylineCD and timer 'leytry' >= 3000
-            // A running cast can make the ability fail, so let it finish
-            for 25
-                if not casting
-                    break
-                endif
-                wait 100
-            endfor
-            clearsysmsg
-            say '[WeaponAbility2'
-            settimer 'leytry' 0
-            wait 300
-            // Refused = still on cooldown, retried 3 s later
-            if not insysmsg 'cannot perform that ability yet'
-                settimer 'leyline' 0
-            endif
-            attack noxMain
-        endif
-
         // Is Curse due? Every CurseEvery, or at once on a new target
         @setvar! CurseDue 0
         if timer 'rcurse' >= CurseEvery
@@ -520,6 +506,20 @@ while listexists 'nox_single' and not dead
                     endif
                 endif
             endif
+        endif
+        // Leyline on cooldown while mana is below maxmana - LeylineMissing,
+        // same pattern as Nox Single. Not a spell, so it never blocks a cast.
+        // It runs after the spell, so no cast clears the journal before the
+        // next pass checks whether it was refused.
+        if UseLeyline = 1 and diffmana > LeylineMissing and timer 'leyline' >= LeylineCD and timer 'leytry' >= 3000
+            say '[WeaponAbility2'
+            settimer 'leytry' 0
+            if not listexists 'f_leytry'
+                createlist 'f_leytry'
+            endif
+            // Give a refusal time to reach the journal
+            wait 300
+            attack noxMain
         endif
     endif
 
