@@ -401,6 +401,14 @@ while listexists 'nox_single' and not dead
         if HealFailed = 0
             // 2. Greater Explosion potion on the target
             if UseExplo = 1 and timer 'rexplo' >= ExploEvery and findtype 3853 self
+                // Wait for a running cast to finish and drop any stray cursor
+                // first, so the potion's own cursor can't be cancelled or taken
+                for 25
+                    if not casting
+                        break
+                    endif
+                    wait 100
+                endfor
                 if targetexists
                     hotkey 'Cancel Current Target'
                     wait 100
@@ -417,8 +425,9 @@ while listexists 'nox_single' and not dead
             // Garlic + Nightshade + Sulfurous Ash, 11 mana
             elseif CurseDue = 1 and mana >= 11 and findtype 3972 self and findtype 3976 self and findtype 3980 self
                 cast 'Curse'
-                // Wait for the cursor, but stop at once if the cast was refused
-                for 20
+                // Wait up to 3.5 s for the cursor (Flamestrike takes 2 s plus
+                // latency), but stop at once if the cast was refused
+                for 35
                     if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
                         break
                     endif
@@ -434,8 +443,9 @@ while listexists 'nox_single' and not dead
             // 4. Harm proc: Nightshade + Spider's Silk, 6 mana
             elseif timer 'rharm' >= ProcEvery and mana >= 6 and findtype 3976 self and findtype 3981 self
                 cast 'Harm'
-                // Wait for the cursor, but stop at once if the cast was refused
-                for 20
+                // Wait up to 3.5 s for the cursor (Flamestrike takes 2 s plus
+                // latency), but stop at once if the cast was refused
+                for 35
                     if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
                         break
                     endif
@@ -449,8 +459,9 @@ while listexists 'nox_single' and not dead
             // 5. Fireball proc: Black Pearl, 9 mana
             elseif timer 'rfireball' >= ProcEvery and mana >= 9 and findtype 3962 self
                 cast 'Fireball'
-                // Wait for the cursor, but stop at once if the cast was refused
-                for 20
+                // Wait up to 3.5 s for the cursor (Flamestrike takes 2 s plus
+                // latency), but stop at once if the cast was refused
+                for 35
                     if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
                         break
                     endif
@@ -464,8 +475,9 @@ while listexists 'nox_single' and not dead
             // 6. Flamestrike: Sulfurous Ash + Spider's Silk, 40 mana
             elseif FSOk = 1 and findtype 3980 self and findtype 3981 self
                 cast 'Flamestrike'
-                // Wait for the cursor, but stop at once if the cast was refused
-                for 20
+                // Wait up to 3.5 s for the cursor (Flamestrike takes 2 s plus
+                // latency), but stop at once if the cast was refused
+                for 35
                     if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
                         break
                     endif
@@ -479,8 +491,9 @@ while listexists 'nox_single' and not dead
             // 7. Harm as cheap filler - does NOT reset the Harm proc timer
             elseif mana >= 6 and findtype 3976 self and findtype 3981 self
                 cast 'Harm'
-                // Wait for the cursor, but stop at once if the cast was refused
-                for 20
+                // Wait up to 3.5 s for the cursor (Flamestrike takes 2 s plus
+                // latency), but stop at once if the cast was refused
+                for 35
                     if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
                         break
                     endif
