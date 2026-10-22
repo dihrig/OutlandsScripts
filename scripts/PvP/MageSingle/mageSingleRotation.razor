@@ -10,8 +10,6 @@
 // Every pass: heals/cures/potions first. Then the first
 // action whose conditions are met (one action per pass):
 //   1. Mushroom below MushroomMana (does not count as the action)
-//      Leyline on cooldown at LeylineMana or less
-//      (not a spell, does not count as the action either)
 //   2. Greater Explosion potion every 15 s
 //   3. Curse every 58 s, and at once on a new target
 //   4. Lightning every 15 s (Grimoire proc)
@@ -19,6 +17,8 @@
 //   6. Fireball every 15 s (Grimoire proc)
 //   7. Flamestrike at FSMana+ mana, or FSSoulfireMana+ with Soulfire up
 //   8. Harm as cheap filler (does not reset the Harm proc timer)
+// After the action: Leyline on cooldown at LeylineMana or less
+// (not a spell, does not count as the action either)
 // Every step except the mushroom can be switched off in the CONFIG.
 // Soulfire, Catalyst and Mana Drain stay manual.
 // ==========================================================
@@ -53,8 +53,11 @@
 @setvar! UseFlamestrike 1
 @setvar! FSMana 60
 @setvar! FSSoulfireMana 40
-// 8. Harm as filler when nothing else is due (1 = on, 0 = off)
+// 8. Harm as filler when nothing else is due (1 = on, 0 = off).
+// Only at HarmFillerMana or more: 17 = Harm (6) + a Greater Heal (11)
+// kept in reserve. Set to 6 to burn mana down to zero.
 @setvar! UseHarmFiller 1
+@setvar! HarmFillerMana 17
 
 // Heal thresholds (missing hit points)
 @setvar! HealPotDiff 30
@@ -62,6 +65,9 @@
 
 // When the target dies: 1 = take the closest grey monster, 0 = stop
 @setvar! AutoNext 1
+// Stop when no valid target could be found for this long (ms),
+// e.g. the closest monster is out of range or is a pet
+@setvar! NoTargetStop 10000
 
 // On start, continue on your last target if it is still alive and in
 // range (1 = on, 0 = always ask with a target cursor)
@@ -81,6 +87,12 @@ if listexists 'nox_single'
     stop
 endif
 createlist 'nox_single'
+
+// A Leyline try flag left over from a previous run would be read as
+// "Leyline went off" on the first pass (the journal is cleared by then)
+if listexists 'f_leytry'
+    removelist 'f_leytry'
+endif
 
 // Drop a cursor left over from a previous run
 if targetexists
@@ -111,6 +123,10 @@ endif
 if not timerexists 'attackref'
     createtimer 'attackref'
     settimer 'attackref' 99999
+endif
+// Time since the script last had a valid target
+if not timerexists 'rnotarget'
+    createtimer 'rnotarget'
 endif
 // Rotation timers, each reset when its action starts
 if not timerexists 'leyline'
@@ -212,6 +228,7 @@ endif
 // ==========================================================
 overhead 'Rotating !' 68
 clearsysmsg
+settimer 'rnotarget' 0
 
 while listexists 'nox_single' and not dead
 
@@ -335,6 +352,10 @@ while listexists 'nox_single' and not dead
             // that's us - never a target
         elseif "tame" in candLabel or "summoned" in candLabel
             @ignore noxCand
+        elseif not find noxCand ground -1 -1 12
+            // Closest monster is on screen but out of range: don't take it,
+            // or it would be dropped again next pass and picked again
+            // (Curse, 'All kill' and the overhead every 250 ms)
         else
             @setvar! noxMain noxCand
             @setvar! HaveTarget 1
@@ -351,6 +372,16 @@ while listexists 'nox_single' and not dead
             endif
             overhead '[ NEW TARGET ]' 68 noxMain
         endif
+    endif
+
+    // No usable target for too long (out of range, pets only...): stop
+    // instead of looping on the target hotkey forever
+    if HaveTarget = 1
+        settimer 'rnotarget' 0
+    elseif timer 'rnotarget' >= NoTargetStop
+        overhead 'No target in range - stopped' 53
+        removelist 'nox_single'
+        stop
     endif
 
     // ===== 4. Rotation =====
@@ -493,8 +524,9 @@ while listexists 'nox_single' and not dead
                     endif
                 endif
 
-            // 8. Harm as cheap filler - does NOT reset the Harm proc timer
-            elseif UseHarmFiller = 1 and mana >= 6
+            // 8. Harm as cheap filler - does NOT reset the Harm proc timer.
+            // Keeps mana for a Greater Heal (see HarmFillerMana)
+            elseif UseHarmFiller = 1 and mana >= HarmFillerMana
                 clearsysmsg
                 cast 'Harm'
                 // A refusal comes at once, without one the cast has started
