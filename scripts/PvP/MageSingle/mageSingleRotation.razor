@@ -363,6 +363,13 @@ while listexists 'nox_single' and not dead
         // Leyline on cooldown while mana is below maxmana - LeylineMissing.
         // Not a spell, so it never blocks a cast and the list goes on.
         if UseLeyline = 1 and diffmana > LeylineMissing and timer 'leyline' >= LeylineCD and timer 'leytry' >= 3000
+            // A running cast can make the ability fail, so let it finish
+            for 25
+                if not casting
+                    break
+                endif
+                wait 100
+            endfor
             clearsysmsg
             say '[WeaponAbility2'
             settimer 'leytry' 0
