@@ -10,7 +10,7 @@
 // Every pass: heals/cures/potions first. Then the first
 // action whose conditions are met (one action per pass):
 //   1. Mushroom below MushroomMana (does not count as the action)
-//      Leyline on cooldown while mana is below maxmana - LeylineMissing
+//      Leyline on cooldown at LeylineMana or less
 //      (not a spell, does not count as the action either)
 //   2. Greater Explosion potion every 15 s
 //   3. Curse every 58 s, and at once on a new target
@@ -26,10 +26,10 @@
 // ===== CONFIG =====
 // 1. Eat the magic mushroom below this mana (60 s cooldown)
 @setvar! MushroomMana 75
-// Leyline (Arcane weapon ability 2) on cooldown while mana is below
-// maxmana - LeylineMissing (1 = on, 0 = off)
+// Leyline (Arcane weapon ability 2) on cooldown at this much mana or
+// less (1 = on, 0 = off)
 @setvar! UseLeyline 1
-@setvar! LeylineMissing 60
+@setvar! LeylineMana 80
 // Wait this long after Leyline went off before trying again (ms).
 // 60000 comes from community scripts - CHECK IN-GAME: if your Leyline
 // cooldown bar is shorter, lower this. A try that is still on cooldown
@@ -507,11 +507,11 @@ while listexists 'nox_single' and not dead
                 endif
             endif
         endif
-        // Leyline on cooldown while mana is below maxmana - LeylineMissing,
+        // Leyline on cooldown at LeylineMana or less,
         // same pattern as Nox Single. Not a spell, so it never blocks a cast.
         // It runs after the spell, so no cast clears the journal before the
         // next pass checks whether it was refused.
-        if UseLeyline = 1 and diffmana > LeylineMissing and timer 'leyline' >= LeylineCD and timer 'leytry' >= 3000
+        if UseLeyline = 1 and mana <= LeylineMana and timer 'leyline' >= LeylineCD and timer 'leytry' >= 3000
             say '[WeaponAbility2'
             settimer 'leytry' 0
             if not listexists 'f_leytry'
