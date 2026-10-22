@@ -1,8 +1,9 @@
 // ==========================================================
 // mageSingleRotation - Arcane staff mage, single target
-// Start/stop, targeting, escape and heal/cure logic are the same as in
-// Nox Single. Only the offensive part is new: a priority list.
-// Press the hotkey: a Poison cursor appears, click your enemy.
+// Start/stop, escape and heal/cure logic are the same as in Nox Single,
+// but the enemy is picked with a plain target cursor (no Poison).
+// Only the offensive part is new: a priority list.
+// Press the hotkey: a target cursor appears, click your enemy.
 // If your last target is still alive and in range, the script
 // continues on it instead (no cursor). Press again to stop.
 //
@@ -52,7 +53,7 @@ endif
 @setvar! AutoNext 1
 
 // On start, continue on your last target if it is still alive and in
-// range (1 = on, 0 = always ask with a Poison cursor)
+// range (1 = on, 0 = always ask with a target cursor)
 @setvar! ResumeLastTarget 1
 
 // ===== Toggle =====
@@ -129,7 +130,7 @@ if not timerexists 'rfireball'
 endif
 
 // ==========================================================
-// PHASE 1: pick the target (last target, or the first Poison cast)
+// PHASE 1: pick the target (last target, or a target cursor)
 // ==========================================================
 @setvar! NoxResume 0
 
@@ -159,36 +160,16 @@ if NoxResume = 1
     clearsysmsg
     overhead '[ CONTINUE ]' 68 noxMain
 else
-    if not findtype 3976 self
-        overhead 'No Nightshade!' 33
-        removelist 'nox_single'
-        stop
-    endif
-    if mana < 9
-        overhead 'Not enough mana!' 33
-        removelist 'nox_single'
-        stop
-    endif
-
     // A Last Target pressed while no cursor was open is queued by Razor and
-    // would grab our next cursor, sending the spell to the old target
+    // would grab our next cursor, picking the old target
     if queued
         hotkey 'Clear Target Queue'
     endif
     overhead 'Select enemy' 68
     clearsysmsg
-    cast 'Poison'
-    waitfortarget 3000
-    if not targetexists
-        overhead 'Cast did not start - try again' 33
-        removelist 'nox_single'
-        stop
-    endif
-    while targetexists
-        wait 50
-    endwhile
-
-    @setvar! noxMain lasttarget
+    // No value = Razor opens a plain target cursor and waits for your click
+    // (no spell, so nothing is cast on the enemy)
+    setvar noxMain
 
     if dead noxMain or not find noxMain ground -1 -1 12 or find noxMain ground -1 -1 0
         overhead 'No valid target' 33
@@ -231,7 +212,7 @@ while listexists 'nox_single' and not dead
     // ===== 2. Clear once, after everything has been read =====
     clearsysmsg
 
-    // A Poison cursor that arrived late must never be used by a self-target spell
+    // A stray cursor must never be used by a self-target spell
     if targetexists
         hotkey 'Cancel Current Target'
         wait 100
