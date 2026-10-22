@@ -1,13 +1,13 @@
 // ==========================================================
 // mageSingleRotation - Arcane staff mage, single target
-// Start/stop, escape and heal/cure logic are the same as in Nox Single,
+// Start/stop and heal/cure logic are the same as in Nox Single,
 // but the enemy is picked with a plain target cursor (no Poison).
 // Only the offensive part is new: a priority list.
 // Press the hotkey: a target cursor appears, click your enemy.
 // If your last target is still alive and in range, the script
 // continues on it instead (no cursor). Press again to stop.
 //
-// Every pass: escape > heals/cures/potions first. Then the first
+// Every pass: heals/cures/potions first. Then the first
 // action whose conditions are met (one action per pass):
 //   1. Mushroom below MushroomMana (does not count as the action)
 //   2. Greater Explosion potion every 15 s
@@ -20,16 +20,6 @@
 // ==========================================================
 
 // ===== CONFIG =====
-// Escape on enemy players via Tracking.
-// To DISABLE: put // in front of the createlist line below.
-if listexists 'cfg_escape'
-    removelist 'cfg_escape'
-endif
-//createlist 'cfg_escape'
-
-// Tracking gump button: 7 = Players, 8 = hostile players only
-@setvar! TrackButton 7
-
 // 1. Eat the magic mushroom below this mana (60 s cooldown)
 @setvar! MushroomMana 75
 // 2. Greater Explosion potion every ExploEvery ms (1 = on, 0 = off).
@@ -71,10 +61,7 @@ if listexists 'nox_single'
 endif
 createlist 'nox_single'
 
-// Reset state flags from any previous run
-if listexists 'f_player'
-    removelist 'f_player'
-endif
+// Drop a cursor left over from a previous run
 if targetexists
     hotkey 'Cancel Current Target'
     wait 100
@@ -99,10 +86,6 @@ endif
 if not timerexists 'gheal'
     createtimer 'gheal'
     settimer 'gheal' 99999
-endif
-if not timerexists 'tracktry'
-    createtimer 'tracktry'
-    settimer 'tracktry' 99999
 endif
 if not timerexists 'attackref'
     createtimer 'attackref'
@@ -194,24 +177,12 @@ endif
 // ==========================================================
 // PHASE 2: rotation
 // ==========================================================
-if listexists 'cfg_escape'
-    overhead 'Rotating ! (escape ON)' 68
-endif
-if not listexists 'cfg_escape'
-    overhead 'Rotating ! (escape OFF)' 68
-endif
+overhead 'Rotating !' 68
 clearsysmsg
 
 while listexists 'nox_single' and not dead
 
-    // ===== 1. Read the journal into flags =====
-    if listexists 'cfg_escape' and insysmsg ' spaces'
-        if not listexists 'f_player'
-            createlist 'f_player'
-        endif
-    endif
-
-    // ===== 2. Clear once, after everything has been read =====
+    // ===== 1. Clear the journal =====
     clearsysmsg
 
     // A stray cursor must never be used by a self-target spell
@@ -225,33 +196,7 @@ while listexists 'nox_single' and not dead
         hotkey 'Clear Target Queue'
     endif
 
-    // ===== 3. Escape =====
-    if listexists 'f_player'
-        removelist 'f_player'
-        overhead 'PLAYER CLOSE! ESCAPING!' 38
-        hotkey 'Cancel Current Target'
-        hotkey '> Interrupt'
-        whisper '[recall Guild Hall'
-        removelist 'nox_single'
-        stop
-    endif
-
-    if listexists 'cfg_escape' and skill 'Tracking' >= 80 and not findbuff 'Tracking' and timer 'tracktry' >= 10000
-        settimer 'tracktry' 0
-        if gumpexists 4267467659
-            gumpclose 4267467659
-        endif
-        useskill 'Tracking'
-        waitforgump 4267467659 2000
-        gumpresponse TrackButton 4267467659
-        wait 500
-        if gumpexists 4267467659
-            gumpresponse 6 4267467659
-        endif
-        wait 500
-    endif
-
-    // ===== 4. Defensive =====
+    // ===== 2. Defensive =====
     @setvar! HealFailed 0
     if diffhits >= HealPotDiff and timer 'healpot' >= 10000 and findtype 3852 self
         dclicktype 3852
@@ -328,7 +273,7 @@ while listexists 'nox_single' and not dead
         endif
     endif
 
-    // ===== 5. Target still alive? =====
+    // ===== 3. Target still alive? =====
     @setvar! HaveTarget 1
     if dead noxMain or not find noxMain ground -1 -1 12 or find noxMain ground -1 -1 0
         @setvar! HaveTarget 0
@@ -368,7 +313,7 @@ while listexists 'nox_single' and not dead
         endif
     endif
 
-    // ===== 6. Rotation =====
+    // ===== 4. Rotation =====
     if HaveTarget = 1
         if timer 'attackref' >= 3000
             attack noxMain
@@ -512,8 +457,5 @@ endwhile
 
 if listexists 'nox_single'
     removelist 'nox_single'
-endif
-if listexists 'f_player'
-    removelist 'f_player'
 endif
 overhead 'Single target stopped' 33
