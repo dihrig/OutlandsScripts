@@ -6,7 +6,8 @@
 // Buffs are not handled here: use the 'Single Mage Buffs' script.
 //
 // Every pass: heals/cures/potions/mushroom first, then Leyline,
-// then the next step of this fixed rotation (repeats forever):
+// then on each new enemy Mana Drain and Curse once, then the next step
+// of this fixed rotation (repeats forever):
 //   1. Explosion (spell)
 //   2. Explosion potion (skipped while on cooldown)
 //   3. Flamestrike if mana > FSMana, otherwise Mind Blast
@@ -17,6 +18,9 @@
 // 11 = cast until the mana for one more Mind Blast is gone.
 // Raise it (e.g. 22) to always keep a Greater Heal in reserve.
 @setvar! NukeMana 11
+// Opener on each new enemy, before the rotation (1 = on, 0 = off)
+@setvar! UseManaDrain 1
+@setvar! UseCurse 1
 // Step 1: Explosion spell (1 = on, 0 = off)
 @setvar! UseExplosion 1
 // Step 2: Explosion potion (1 = on, 0 = off). Needs Alchemy 80+.
@@ -111,6 +115,17 @@ endif
 
 // Rotation always starts with step 1 (Explosion)
 @setvar! RotStep 1
+
+// Enemies that already got the opener (Mana Drain / Curse).
+// Emptied on every start, so each fight begins with the opener.
+if listexists 'xdrain'
+    removelist 'xdrain'
+endif
+createlist 'xdrain'
+if listexists 'xcurse'
+    removelist 'xcurse'
+endif
+createlist 'xcurse'
 
 // ==========================================================
 // Pick the target
@@ -320,8 +335,53 @@ while listexists 'nox_single' and not dead
             attack noxMain
         endif
 
-        // A heal or cure was refused: no rotation step this pass
-        if HealFailed = 0
+        // A heal or cure was refused: no opener or rotation step this pass
+        @setvar! Opened 1
+        if HealFailed = 0 and UseManaDrain = 1 and not inlist 'xdrain' noxMain
+            @setvar! Opened 0
+            // Opener 1: Mana Drain, Black Pearl + Mandrake Root + Spider's Silk, 11 mana
+            if not findtype 3962 self or not findtype 3974 self or not findtype 3981 self
+                // No reagents: skip it for this enemy
+                pushlist 'xdrain' noxMain
+            elseif mana >= 11
+                cast 'Mana Drain'
+                // Wait for the cursor, but stop at once if the cast was refused
+                for 20
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
+                if targetexists
+                    target noxMain
+                    // Only done when the cast really went off
+                    pushlist 'xdrain' noxMain
+                endif
+            endif
+        elseif HealFailed = 0 and UseCurse = 1 and not inlist 'xcurse' noxMain
+            @setvar! Opened 0
+            // Opener 2: Curse, Garlic + Nightshade + Sulfurous Ash, 11 mana
+            if not findtype 3972 self or not findtype 3976 self or not findtype 3980 self
+                // No reagents: skip it for this enemy
+                pushlist 'xcurse' noxMain
+            elseif mana >= 11
+                cast 'Curse'
+                // Wait for the cursor, but stop at once if the cast was refused
+                for 20
+                    if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                        break
+                    endif
+                    wait 100
+                endfor
+                if targetexists
+                    target noxMain
+                    // Only done when the cast really went off
+                    pushlist 'xcurse' noxMain
+                endif
+            endif
+        endif
+
+        if HealFailed = 0 and Opened = 1
 
             // Step 1: Explosion, Bloodmoss + Mandrake Root, 20 mana
             if RotStep = 1
