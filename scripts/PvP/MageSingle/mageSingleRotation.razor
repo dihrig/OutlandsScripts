@@ -36,9 +36,14 @@
 @setvar! LeylineMana 80
 // Wait this long after Leyline went off before trying again (ms).
 // 60000 comes from community scripts - CHECK IN-GAME: if your Leyline
-// cooldown bar is shorter, lower this. A try counts as gone off only
-// when the Leyline buff shows up, any other try is retried 3 s later.
+// cooldown bar is shorter, lower this.
 @setvar! LeylineCD 60000
+// Leyline is armed by the command and only goes off (Leyline buff) when
+// a staff hit lands. A second command would disarm it, so once armed
+// the script leaves it alone for up to LeylineArmWait ms. Only if no buff
+// shows up in that time is it armed again. A refused try (still on
+// cooldown) is retried 3 s later.
+@setvar! LeylineArmWait 15000
 // 2. Greater Explosion potion every ExploEvery ms (1 = on, 0 = off).
 // Set to 0 in groups if you're not sure they spare your friends.
 // 11250 = 15 s base cooldown - 3.75 s from the potion codex
@@ -107,11 +112,8 @@ if listexists 'nox_single'
 endif
 createlist 'nox_single'
 
-// A Leyline try flag left over from a previous run would be read as
-// "Leyline went off" on the first pass (the journal is cleared by then)
-if listexists 'f_leytry'
-    removelist 'f_leytry'
-endif
+// Leyline may still be armed from a previous run, so the armed flag
+// is kept. LeylineArmWait clears it if no hit ever lands.
 
 // Drop a cursor left over from a previous run
 if targetexists
@@ -164,6 +166,11 @@ endif
 if not timerexists 'leytry'
     createtimer 'leytry'
     settimer 'leytry' 99999
+endif
+// Time since Leyline was armed
+if not timerexists 'leyarm'
+    createtimer 'leyarm'
+    settimer 'leyarm' 99999
 endif
 if not timerexists 'rmushroom'
     createtimer 'rmushroom'
@@ -266,12 +273,14 @@ settimer 'rlost' 0
 while listexists 'nox_single' and not dead
 
     // ===== 1. Clear the journal =====
-    // Did the last Leyline try go off? Only the Leyline buff counts as
-    // success. Anything else (refused, no answer) is retried 3 s later.
-    if listexists 'f_leytry'
-        removelist 'f_leytry'
+    // Armed Leyline went off (a staff hit landed)? Then its cooldown
+    // starts. No hit within LeylineArmWait: forget it, so it is armed again.
+    if listexists 'f_leyarmed'
         if findbuff 'Leyline'
+            removelist 'f_leyarmed'
             settimer 'leyline' 0
+        elseif timer 'leyarm' >= LeylineArmWait
+            removelist 'f_leyarmed'
         endif
     endif
     clearsysmsg
@@ -444,18 +453,21 @@ while listexists 'nox_single' and not dead
             wait 200
         endif
 
-        // Leyline on cooldown at LeylineMana or less, never while its buff
-        // is still up. Runs before the action, so it fires on the first
-        // pass below LeylineMana. Not a spell, so it never blocks a cast.
-        // The next pass checks the buff to see whether it went off.
-        if UseLeyline = 1 and mana <= LeylineMana and not findbuff 'Leyline' and timer 'leyline' >= LeylineCD and timer 'leytry' >= 3000
+        // Arm Leyline at LeylineMana or less. Never while its buff is up
+        // or while it is already armed (a second command would disarm it).
+        // Runs before the action, so it is armed on the first pass below
+        // LeylineMana. Not a spell, so it never blocks a cast.
+        if UseLeyline = 1 and mana <= LeylineMana and not findbuff 'Leyline' and not listexists 'f_leyarmed' and timer 'leyline' >= LeylineCD and timer 'leytry' >= 3000
+            clearsysmsg
             say '[WeaponAbility2'
             settimer 'leytry' 0
-            if not listexists 'f_leytry'
-                createlist 'f_leytry'
-            endif
-            // Give the buff time to show up
+            // Give a refusal time to reach the journal
             wait 300
+            if not insysmsg 'cannot perform that ability yet'
+                // No refusal: armed, wait for a staff hit to land
+                createlist 'f_leyarmed'
+                settimer 'leyarm' 0
+            endif
             attack noxMain
         endif
 
