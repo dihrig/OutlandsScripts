@@ -10,15 +10,19 @@
 // Every pass: heals/cures/potions first. Then the first
 // action whose conditions are met (one action per pass):
 //   1. Mushroom below MushroomMana (does not count as the action)
-//   2. Greater Explosion potion every 15 s
+//   2. Greater Explosion potion every 11.25 s (potion codex)
 //   3. Curse every 58 s, and at once on a new target
 //   4. Lightning every 15 s (Grimoire proc)
 //   5. Harm every 15 s (Grimoire proc)
 //   6. Fireball every 15 s (Grimoire proc)
-//   7. Flamestrike at FSMana+ mana, or FSSoulfireMana+ with Soulfire up
-//   8. Harm as cheap filler (does not reset the Harm proc timer)
+//   7. Magic Arrow every 15 s (Grimoire proc)
+//   8. Filler spell when nothing else is due: Flamestrike (default),
+//      Harm or Mind Blast (a Harm filler does not reset the Harm proc timer)
 // After the action: Leyline on cooldown at LeylineMana or less
 // (not a spell, does not count as the action either)
+// If the target vanishes (dead, hidden or invisible), the script keeps
+// healing and waits LostGrace ms for it to come back before it looks
+// for a new one.
 // Every step except the mushroom can be switched off in the CONFIG.
 // Soulfire, Catalyst and Mana Drain stay manual.
 // ==========================================================
@@ -37,8 +41,9 @@
 @setvar! LeylineCD 60000
 // 2. Greater Explosion potion every ExploEvery ms (1 = on, 0 = off).
 // Set to 0 in groups if you're not sure they spare your friends.
+// 11250 = 15 s base cooldown - 3.75 s from the potion codex
 @setvar! UseExplo 1
-@setvar! ExploEvery 15000
+@setvar! ExploEvery 11250
 // 3. Curse every CurseEvery ms (1 = on, 0 = off)
 @setvar! UseCurse 1
 @setvar! CurseEvery 58000
@@ -48,16 +53,23 @@
 @setvar! UseHarm 1
 @setvar! UseFireball 1
 @setvar! ProcEvery 15000
-// 7. Flamestrike at this much mana, or at FSSoulfireMana while the
-// Soulfire buff is active (1 = on, 0 = off)
-@setvar! UseFlamestrike 1
-@setvar! FSMana 60
+// 7. Magic Arrow every MagicArrowEvery ms (1 = on, 0 = off), 4 mana
+@setvar! UseMagicArrow 1
+@setvar! MagicArrowEvery 15000
+// 8. Filler spell, cast when nothing above is due:
+//    1 = Flamestrike (default), 2 = Harm, 3 = Mind Blast, 0 = no filler
+@setvar! FillerSpell 1
+// Flamestrike filler: at FSMana or more, or at FSSoulfireMana while the
+// Soulfire buff is active (Flamestrike costs 40)
+@setvar! FSMana 51
 @setvar! FSSoulfireMana 40
-// 8. Harm as filler when nothing else is due (1 = on, 0 = off).
-// Only at HarmFillerMana or more: 17 = Harm (6) + a Greater Heal (11)
-// kept in reserve. Set to 6 to burn mana down to zero.
-@setvar! UseHarmFiller 1
+// Harm filler: at HarmFillerMana or more. 17 = Harm (6) + a Greater Heal
+// (11) kept in reserve. Set to 6 to burn mana down to zero.
+// Does not reset the Harm proc timer.
 @setvar! HarmFillerMana 17
+// Mind Blast filler: at MBFillerMana or more. 25 = Mind Blast (14) +
+// a Greater Heal (11) kept in reserve. Set to 14 to burn mana to zero.
+@setvar! MBFillerMana 25
 
 // Heal thresholds (missing hit points)
 @setvar! HealPotDiff 30
@@ -65,8 +77,15 @@
 
 // When the target dies: 1 = take the closest grey monster, 0 = stop
 @setvar! AutoNext 1
+// When the target vanishes, wait this long for it to come back (ms)
+// before taking a new one (or stopping with AutoNext 0). Covers mobs
+// that go hidden/invisible for a few seconds. The client can't tell a
+// kill from a vanish, so this is also the pause after each kill before
+// the next target is picked. 0 = old behaviour (switch at once).
+@setvar! LostGrace 3000
 // Stop when no valid target could be found for this long (ms),
-// e.g. the closest monster is out of range or is a pet
+// e.g. the closest monster is out of range or is a pet.
+// Keep it larger than LostGrace.
 @setvar! NoTargetStop 10000
 
 // On start, continue on your last target if it is still alive and in
@@ -128,6 +147,15 @@ endif
 if not timerexists 'rnotarget'
     createtimer 'rnotarget'
 endif
+// Time since the current enemy was last seen (grace for hidden mobs)
+if not timerexists 'rlost'
+    createtimer 'rlost'
+endif
+// Throttles the search for a new target to once per second
+if not timerexists 'rsearch'
+    createtimer 'rsearch'
+    settimer 'rsearch' 99999
+endif
 // Rotation timers, each reset when its action starts
 if not timerexists 'leyline'
     createtimer 'leyline'
@@ -161,6 +189,10 @@ endif
 if not timerexists 'rfireball'
     createtimer 'rfireball'
     settimer 'rfireball' 99999
+endif
+if not timerexists 'rmagicarrow'
+    createtimer 'rmagicarrow'
+    settimer 'rmagicarrow' 99999
 endif
 
 // ==========================================================
@@ -229,6 +261,7 @@ endif
 overhead 'Rotating !' 68
 clearsysmsg
 settimer 'rnotarget' 0
+settimer 'rlost' 0
 
 while listexists 'nox_single' and not dead
 
@@ -331,46 +364,58 @@ while listexists 'nox_single' and not dead
     endif
 
     // ===== 3. Target still alive? =====
+    // A hidden/invisible mob is removed from your client, so it looks
+    // exactly like a dead one. Every pass checks noxMain again first, so
+    // if it reappears within the grace time the rotation just carries on.
     @setvar! HaveTarget 1
     if dead noxMain or not find noxMain ground -1 -1 12 or find noxMain ground -1 -1 0
         @setvar! HaveTarget 0
-        if AutoNext = 0
-            overhead 'Target gone - stopped' 53
-            removelist 'nox_single'
-            stop
-        endif
+    endif
+
+    if HaveTarget = 1
+        settimer 'rlost' 0
+    elseif timer 'rlost' < LostGrace
+        // Just vanished: keep healing, wait for it to come back
+    elseif AutoNext = 0
+        overhead 'Target gone - stopped' 53
+        removelist 'nox_single'
+        stop
+    elseif timer 'rsearch' >= 1000
+        settimer 'rsearch' 0
         hotkey 'Target Closest Grey Monster'
         wait 150
         if insysmsg 'No one matching'
-            overhead 'Target gone - nothing nearby' 53
-            removelist 'nox_single'
-            stop
-        endif
-        @setvar! noxCand lasttarget
-        getlabel noxCand candLabel
-        if find noxCand ground -1 -1 0
-            // that's us - never a target
-        elseif "tame" in candLabel or "summoned" in candLabel
-            @ignore noxCand
-        elseif not find noxCand ground -1 -1 12
-            // Closest monster is on screen but out of range: don't take it,
-            // or it would be dropped again next pass and picked again
-            // (Curse, 'All kill' and the overhead every 250 ms)
+            // Nothing nearby (yet): keep looking, NoTargetStop ends the
+            // script if nothing turns up. noxMain is still checked every
+            // pass, so a mob that reappears late is taken up again.
         else
-            @setvar! noxMain noxCand
-            @setvar! HaveTarget 1
-            // New enemy: Curse is due at once, Harm/Fireball timers keep running
-            settimer 'rcurse' 999999
-            attack noxMain
-            settimer 'attackref' 0
-            if followers > 0
-                say 'All kill'
-                waitfortarget 1500
-                if targetexists
-                    target noxMain
+            @setvar! noxCand lasttarget
+            getlabel noxCand candLabel
+            if find noxCand ground -1 -1 0
+                // that's us - never a target
+            elseif "tame" in candLabel or "summoned" in candLabel
+                @ignore noxCand
+            elseif not find noxCand ground -1 -1 12
+                // Closest monster is on screen but out of range: don't take it,
+                // or it would be dropped again next pass and picked again
+                // (Curse, 'All kill' and the overhead every pass)
+            else
+                @setvar! noxMain noxCand
+                @setvar! HaveTarget 1
+                settimer 'rlost' 0
+                // New enemy: Curse is due at once, proc timers keep running
+                settimer 'rcurse' 999999
+                attack noxMain
+                settimer 'attackref' 0
+                if followers > 0
+                    say 'All kill'
+                    waitfortarget 1500
+                    if targetexists
+                        target noxMain
+                    endif
                 endif
+                overhead '[ NEW TARGET ]' 68 noxMain
             endif
-            overhead '[ NEW TARGET ]' 68 noxMain
         endif
     endif
 
@@ -405,12 +450,23 @@ while listexists 'nox_single' and not dead
         elseif not inlist 'rcursed' noxMain
             @setvar! CurseDue 1
         endif
-        // Enough mana for Flamestrike? Less is needed while Soulfire is up
-        @setvar! FSOk 0
-        if mana >= FSMana
-            @setvar! FSOk 1
-        elseif findbuff 'Soulfire' and mana >= FSSoulfireMana
-            @setvar! FSOk 1
+        // Is the chosen filler castable? Flamestrike needs less mana
+        // while Soulfire is up
+        @setvar! FillerOk 0
+        if FillerSpell = 1
+            if mana >= FSMana
+                @setvar! FillerOk 1
+            elseif findbuff 'Soulfire' and mana >= FSSoulfireMana
+                @setvar! FillerOk 1
+            endif
+        elseif FillerSpell = 2
+            if mana >= HarmFillerMana
+                @setvar! FillerOk 1
+            endif
+        elseif FillerSpell = 3
+            if mana >= MBFillerMana
+                @setvar! FillerOk 1
+            endif
         endif
 
         // A refused heal or cure means no action this pass
@@ -511,24 +567,32 @@ while listexists 'nox_single' and not dead
                     endif
                 endif
 
-            // 7. Flamestrike, 40 mana
-            elseif UseFlamestrike = 1 and FSOk = 1
+            // 7. Magic Arrow, 4 mana
+            elseif UseMagicArrow = 1 and timer 'rmagicarrow' >= MagicArrowEvery and mana >= 4
                 clearsysmsg
-                cast 'Flamestrike'
+                cast 'Magic Arrow'
                 // A refusal comes at once, without one the cast has started
                 wait 300
                 if not insysmsg 'recovered' and not insysmsg 'already casting'
+                    // Reset now, so a failed targeting can't repeat this spell
+                    settimer 'rmagicarrow' 0
                     waitfortarget 3500
                     if targetexists
                         target noxMain
                     endif
                 endif
 
-            // 8. Harm as cheap filler - does NOT reset the Harm proc timer.
-            // Keeps mana for a Greater Heal (see HarmFillerMana)
-            elseif UseHarmFiller = 1 and mana >= HarmFillerMana
+            // 8. Filler: Flamestrike, Harm or Mind Blast (see FillerSpell).
+            // No timer is reset, so a Harm filler doesn't touch the Harm proc
+            elseif FillerOk = 1
                 clearsysmsg
-                cast 'Harm'
+                if FillerSpell = 1
+                    cast 'Flamestrike'
+                elseif FillerSpell = 2
+                    cast 'Harm'
+                else
+                    cast 'Mind Blast'
+                endif
                 // A refusal comes at once, without one the cast has started
                 wait 300
                 if not insysmsg 'recovered' and not insysmsg 'already casting'
