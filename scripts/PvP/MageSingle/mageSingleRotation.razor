@@ -18,7 +18,7 @@
 //   7. Magic Arrow every 15 s (Grimoire proc)
 //   8. Filler spell when nothing else is due: Flamestrike (default),
 //      Harm or Mind Blast (a Harm filler does not reset the Harm proc timer)
-// After the action: Leyline on cooldown at LeylineMana or less
+// Before the action: Leyline on cooldown at LeylineMana or less
 // (not a spell, does not count as the action either)
 // If the target vanishes (dead, hidden or invisible), the script keeps
 // healing and waits LostGrace ms for it to come back before it looks
@@ -444,6 +444,21 @@ while listexists 'nox_single' and not dead
             wait 200
         endif
 
+        // Leyline on cooldown at LeylineMana or less, never while its buff
+        // is still up. Runs before the action, so it fires on the first
+        // pass below LeylineMana. Not a spell, so it never blocks a cast.
+        // The next pass checks the buff to see whether it went off.
+        if UseLeyline = 1 and mana <= LeylineMana and not findbuff 'Leyline' and timer 'leyline' >= LeylineCD and timer 'leytry' >= 3000
+            say '[WeaponAbility2'
+            settimer 'leytry' 0
+            if not listexists 'f_leytry'
+                createlist 'f_leytry'
+            endif
+            // Give the buff time to show up
+            wait 300
+            attack noxMain
+        endif
+
         // Is Curse due? Every CurseEvery, or at once on a new target
         @setvar! CurseDue 0
         if timer 'rcurse' >= CurseEvery
@@ -603,19 +618,6 @@ while listexists 'nox_single' and not dead
                     endif
                 endif
             endif
-        endif
-        // Leyline on cooldown at LeylineMana or less, never while its buff
-        // is still up. Not a spell, so it never blocks a cast. The next
-        // pass checks the buff to see whether it went off.
-        if UseLeyline = 1 and mana <= LeylineMana and not findbuff 'Leyline' and timer 'leyline' >= LeylineCD and timer 'leytry' >= 3000
-            say '[WeaponAbility2'
-            settimer 'leytry' 0
-            if not listexists 'f_leytry'
-                createlist 'f_leytry'
-            endif
-            // Give the buff time to show up
-            wait 300
-            attack noxMain
         endif
     endif
 
