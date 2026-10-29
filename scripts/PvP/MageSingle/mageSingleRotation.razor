@@ -36,8 +36,8 @@
 @setvar! LeylineMana 80
 // Wait this long after Leyline went off before trying again (ms).
 // 60000 comes from community scripts - CHECK IN-GAME: if your Leyline
-// cooldown bar is shorter, lower this. A try that is still on cooldown
-// is simply retried 3 s later.
+// cooldown bar is shorter, lower this. A try counts as gone off only
+// when the Leyline buff shows up, any other try is retried 3 s later.
 @setvar! LeylineCD 60000
 // 2. Greater Explosion potion every ExploEvery ms (1 = on, 0 = off).
 // Set to 0 in groups if you're not sure they spare your friends.
@@ -266,10 +266,11 @@ settimer 'rlost' 0
 while listexists 'nox_single' and not dead
 
     // ===== 1. Clear the journal =====
-    // Did the last Leyline try go off? Refused = still on cooldown, retry in 3 s
+    // Did the last Leyline try go off? Only the Leyline buff counts as
+    // success. Anything else (refused, no answer) is retried 3 s later.
     if listexists 'f_leytry'
         removelist 'f_leytry'
-        if not insysmsg 'cannot perform that ability yet'
+        if findbuff 'Leyline'
             settimer 'leyline' 0
         endif
     endif
@@ -603,17 +604,16 @@ while listexists 'nox_single' and not dead
                 endif
             endif
         endif
-        // Leyline on cooldown at LeylineMana or less,
-        // same pattern as Nox Single. Not a spell, so it never blocks a cast.
-        // It runs after the spell, so no cast clears the journal before the
-        // next pass checks whether it was refused.
-        if UseLeyline = 1 and mana <= LeylineMana and timer 'leyline' >= LeylineCD and timer 'leytry' >= 3000
+        // Leyline on cooldown at LeylineMana or less, never while its buff
+        // is still up. Not a spell, so it never blocks a cast. The next
+        // pass checks the buff to see whether it went off.
+        if UseLeyline = 1 and mana <= LeylineMana and not findbuff 'Leyline' and timer 'leyline' >= LeylineCD and timer 'leytry' >= 3000
             say '[WeaponAbility2'
             settimer 'leytry' 0
             if not listexists 'f_leytry'
                 createlist 'f_leytry'
             endif
-            // Give a refusal time to reach the journal
+            // Give the buff time to show up
             wait 300
             attack noxMain
         endif
