@@ -1,0 +1,321 @@
+// ==========================================================
+// Tamer Keep Alive - DRAFT v1, not tested in-game yet
+// Keeps you and your pets alive with potions, veterinary and magery.
+//
+// Press the hotkey to start, press again to stop.
+// Press twice quickly (stop + start) to pick a new tank pet.
+// First start: a cursor appears, click your main (tank) pet.
+//
+// One pass, in this order:
+//   1. Heal potion / cure potion for you
+//   2. Veterinary supplies every few seconds. On Outlands they heal
+//      YOU and ALL nearby pets at once, so this is the "vet on me" part.
+//      No vet supplies left: clean bandage on you when you are hurt,
+//      otherwise on the tank pet when it stands next to you.
+//   3. Cure / Greater Heal spell on you
+//   4. Resurrection on the tank pet when it died next to you
+//   5. Greater Heal on the tank pet every few seconds
+//
+// Razor can't see a pet's hit points or poison. The script uses the
+// vet supply message "You or your nearby followers do not require
+// healing" (and "not damaged" from a pet bandage): after one of those,
+// everybody is full and the pet heal spell is skipped for a while.
+//
+// Razor runs one script at a time: bard skills on Razor hotkeys work
+// while this runs, another script stops it.
+// ==========================================================
+
+// ===== CONFIG =====
+// --- Potions (you) ---
+// Heal potion from this many missing hit points
+@setvar! HealPotDiff 35
+// Cure potion when poisoned (1 = on, 0 = off)
+@setvar! UseCurePot 1
+
+// --- Veterinary ---
+// Veterinary supplies (1 = on, 0 = off)
+@setvar! UseVetSupplies 1
+// Try the vet supplies this often (ms). Community scripts use 4000 - 6000.
+@setvar! VetCD 5000
+// No vet supplies left: clean bandage on yourself from this many missing HP
+// (0 = never bandage yourself)
+@setvar! SelfBandageDiff 30
+// No vet supplies left: clean bandage on the tank pet (1 = on, 0 = off)
+@setvar! PetBandage 1
+
+// --- Magery on you ---
+// Greater Heal from this many missing hit points
+@setvar! GreaterHealDiff 30
+// Cure spell when poisoned and no cure potion (1 = on, 0 = off)
+@setvar! UseCureSpell 1
+
+// --- Magery on the tank pet ---
+// Greater Heal on the pet: 0 = off, 1 = only in war mode, 2 = always
+@setvar! PetHealMode 2
+// One pet Greater Heal at most this often (ms)
+@setvar! PetHealCD 6000
+// Pet heal only above this much mana, so a Greater Heal for you
+// (11 mana) is always left
+@setvar! PetHealMana 25
+// Pet heal range in tiles
+@setvar! PetRange 10
+// Resurrection when the tank pet died next to you (1 = on, 0 = off)
+@setvar! UsePetRes 1
+
+// Two presses closer together than this (ms) = pick a new tank pet
+@setvar! DoublePress 800
+
+// ===== Toggle =====
+if not timerexists 'btpress'
+    createtimer 'btpress'
+    settimer 'btpress' 99999
+endif
+if listexists 'bt_keepalive'
+    removelist 'bt_keepalive'
+    if targetexists
+        hotkey 'Cancel Current Target'
+    endif
+    settimer 'btpress' 0
+    overhead 'Keep Alive OFF' 33
+    stop
+endif
+
+// Pick a new pet when started right after stopping
+@setvar! btPick 0
+if timer 'btpress' < DoublePress
+    @setvar! btPick 1
+endif
+
+// ===== Timers (99999 = ready immediately) =====
+if not timerexists 'bthealpot'
+    createtimer 'bthealpot'
+    settimer 'bthealpot' 99999
+endif
+if not timerexists 'btcurepot'
+    createtimer 'btcurepot'
+    settimer 'btcurepot' 99999
+endif
+if not timerexists 'btvet'
+    createtimer 'btvet'
+    settimer 'btvet' 99999
+endif
+if not timerexists 'btgheal'
+    createtimer 'btgheal'
+    settimer 'btgheal' 99999
+endif
+if not timerexists 'btpetheal'
+    createtimer 'btpetheal'
+    settimer 'btpetheal' 99999
+endif
+if not timerexists 'btallfull'
+    createtimer 'btallfull'
+    settimer 'btallfull' 99999
+endif
+if not timerexists 'btnovet'
+    createtimer 'btnovet'
+    settimer 'btnovet' 99999
+endif
+
+// ===== Tank pet =====
+if targetexists
+    hotkey 'Cancel Current Target'
+    wait 100
+endif
+if not varexist 'btPet'
+    @setvar! btPick 1
+elseif not find btPet ground -1 -1 18
+    @setvar! btPick 1
+endif
+if btPick = 1
+    overhead 'Select your tank pet' 68
+    @setvar! btPet
+endif
+if find btPet ground -1 -1 0
+    overhead 'That was you - select your PET' 33
+    @setvar! btPet
+endif
+overhead 'Tank pet' 68 btPet
+
+createlist 'bt_keepalive'
+overhead 'Keep Alive ON' 68
+clearsysmsg
+
+while listexists 'bt_keepalive' and not dead
+
+    // ===== 1. Read the journal =====
+    if insysmsg 'do not require healing' or insysmsg 'not damaged'
+        // You and the pets are full
+        settimer 'btallfull' 0
+    endif
+    clearsysmsg
+
+    // A cursor left over from anything else must never take our heal
+    if targetexists
+        hotkey 'Cancel Current Target'
+        wait 100
+    endif
+    if queued
+        hotkey 'Clear Target Queue'
+    endif
+
+    // ===== 2. Potions (you) =====
+    if diffhits >= HealPotDiff and timer 'bthealpot' >= 10000 and findtype 3852 self
+        dclicktype 3852
+        settimer 'bthealpot' 0
+        wait 200
+    endif
+    if UseCurePot = 1 and poisoned and timer 'btcurepot' >= 2000 and findtype 3847 self
+        dclicktype 3847
+        settimer 'btcurepot' 0
+        wait 200
+    endif
+
+    // ===== 3. Veterinary =====
+    if not bandaging and timer 'btvet' >= VetCD
+        settimer 'btvet' 0
+        if UseVetSupplies = 1 and findtype 25750 backpack
+            // Heals you and every pet nearby at once
+            dclicktype 25750 backpack
+            wait 300
+            if insysmsg 'do not require healing'
+                settimer 'btallfull' 0
+            endif
+        else
+            if UseVetSupplies = 1 and timer 'btnovet' >= 30000
+                overhead 'No vet supplies!' 33
+                settimer 'btnovet' 0
+            endif
+            if SelfBandageDiff > 0 and diffhits >= SelfBandageDiff and findtype 3617 backpack
+                hotkey 'Bandage Self'
+                wait 300
+            elseif PetBandage = 1 and not dead btPet and find btPet ground -1 -1 1 and findtype 3617 backpack
+                dclicktype 3617 backpack
+                waitfortarget 1000
+                if targetexists
+                    target btPet
+                    wait 300
+                    if insysmsg 'not damaged'
+                        settimer 'btallfull' 0
+                    endif
+                endif
+            endif
+        endif
+    endif
+
+    // ===== 4. Cure spell (you) =====
+    if UseCureSpell = 1 and poisoned and timer 'btcurepot' >= 2000 and mana >= 6 and findtype 3972 self and findtype 3973 self
+        // Wait for a running cast to finish and drop any stray cursor
+        for 25
+            if not casting
+                break
+            endif
+            wait 100
+        endfor
+        if targetexists
+            hotkey 'Cancel Current Target'
+            wait 100
+        endif
+        cast 'Cure'
+        for 20
+            if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                break
+            endif
+            wait 100
+        endfor
+        if targetexists
+            target 'self'
+            settimer 'btcurepot' 0
+        endif
+    endif
+
+    // ===== 5. Greater Heal (you) =====
+    if diffhits >= GreaterHealDiff and mana >= 11 and timer 'btgheal' >= 2500 and findtype 3972 self and findtype 3973 self and findtype 3974 self and findtype 3981 self
+        for 25
+            if not casting
+                break
+            endif
+            wait 100
+        endfor
+        if targetexists
+            hotkey 'Cancel Current Target'
+            wait 100
+        endif
+        cast 'Greater Heal'
+        for 25
+            if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                break
+            endif
+            wait 100
+        endfor
+        if targetexists
+            target 'self'
+            settimer 'btgheal' 0
+        endif
+    endif
+
+    // ===== 6. Resurrection (tank pet) =====
+    // Blood Moss, Garlic, Ginseng
+    if UsePetRes = 1 and dead btPet and find btPet ground -1 -1 1 and mana >= 50 and findtype 3963 self and findtype 3972 self and findtype 3973 self and diffhits < GreaterHealDiff
+        for 25
+            if not casting
+                break
+            endif
+            wait 100
+        endfor
+        if targetexists
+            hotkey 'Cancel Current Target'
+            wait 100
+        endif
+        overhead 'Res pet' 68 btPet
+        cast 'Resurrection'
+        for 30
+            if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                break
+            endif
+            wait 100
+        endfor
+        if targetexists
+            target btPet
+        endif
+    endif
+
+    // ===== 7. Greater Heal (tank pet) =====
+    @setvar! btPetHeal 0
+    if PetHealMode = 2
+        @setvar! btPetHeal 1
+    elseif PetHealMode = 1 and warmode
+        @setvar! btPetHeal 1
+    endif
+    if btPetHeal = 1 and timer 'btpetheal' >= PetHealCD and timer 'btallfull' >= PetHealCD and diffhits < GreaterHealDiff and not poisoned
+        if mana >= PetHealMana and not dead btPet and find btPet ground -1 -1 PetRange and findtype 3972 self and findtype 3973 self and findtype 3974 self and findtype 3981 self
+            for 25
+                if not casting
+                    break
+                endif
+                wait 100
+            endfor
+            if targetexists
+                hotkey 'Cancel Current Target'
+                wait 100
+            endif
+            cast 'Greater Heal'
+            for 25
+                if targetexists or insysmsg 'recovered' or insysmsg 'already casting'
+                    break
+                endif
+                wait 100
+            endfor
+            if targetexists
+                target btPet
+                settimer 'btpetheal' 0
+            endif
+        endif
+    endif
+
+    wait 200
+endwhile
+
+if listexists 'bt_keepalive'
+    removelist 'bt_keepalive'
+endif
+overhead 'Keep Alive OFF' 33
