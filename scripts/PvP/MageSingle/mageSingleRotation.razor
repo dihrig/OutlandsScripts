@@ -12,6 +12,7 @@
 //   1. Mushroom below MushroomMana (does not count as the action)
 //   2. Greater Explosion potion every 11.25 s (potion codex)
 //   3. Curse every 58 s, and at once on a new target
+//   3b. Flamestrike while mana is above FSPriorityMana (80)
 //   4. Lightning every 15 s (Grimoire proc)
 //   5. Harm every 15 s (Grimoire proc)
 //   6. Fireball every 15 s (Grimoire proc)
@@ -20,6 +21,8 @@
 //      Harm or Mind Blast (a Harm filler does not reset the Harm proc timer)
 // Before the action: Leyline on cooldown at LeylineMana or less
 // (not a spell, does not count as the action either)
+// When Leyline goes off, the in-game cooldown bar "Leyline" is started.
+// Create it first in the client's cooldown options (name: Leyline).
 // If the target vanishes (dead, hidden or invisible), the script keeps
 // healing and waits LostGrace ms for it to come back before it looks
 // for a new one.
@@ -36,22 +39,25 @@
 @setvar! LeylineMana 80
 // Wait this long after Leyline went off before trying again (ms).
 // 60000 comes from community scripts - CHECK IN-GAME: if your Leyline
-// cooldown bar is shorter, lower this.
+// cooldown bar is shorter, lower this. A try counts as gone off only
+// when the Leyline buff shows up, any other try is retried 3 s later.
+// The in-game cooldown bar "Leyline" uses the duration set in the client.
 @setvar! LeylineCD 60000
-// Leyline is armed by the command and only goes off (Leyline buff) when
-// a staff hit lands. A second command would disarm it, so once armed
-// the script leaves it alone for up to LeylineArmWait ms. Only if no buff
-// shows up in that time is it armed again. A refused try (still on
-// cooldown) is retried 3 s later.
-@setvar! LeylineArmWait 15000
 // 2. Greater Explosion potion every ExploEvery ms (1 = on, 0 = off).
 // Set to 0 in groups if you're not sure they spare your friends.
 // 11250 = 15 s base cooldown - 3.75 s from the potion codex
-@setvar! UseExplo 1
-@setvar! ExploEvery 11250
+@setvar! UseExplo 0
+@setvar! ExploEvery 11500
 // 3. Curse every CurseEvery ms (1 = on, 0 = off)
 @setvar! UseCurse 1
 @setvar! CurseEvery 58000
+// 3b. Flamestrike first: while mana is ABOVE FSPriorityMana, Flamestrike
+// is cast right after Curse, before the Grimoire procs. Burns the mana
+// you'd otherwise waste at the cap and gets you into Leyline range
+// (LeylineMana) sooner. Delays a due proc by about one cast at most.
+// Keep it at LeylineMana or higher. 0 = off (Flamestrike only as filler).
+// Works with any FillerSpell.
+@setvar! FSPriorityMana 80
 // 4./5./6. Lightning, Harm and Fireball Grimoire procs every ProcEvery ms
 // (1 = on, 0 = off)
 @setvar! UseLightning 1
@@ -81,7 +87,7 @@
 @setvar! GreaterHealDiff 30
 
 // When the target dies: 1 = take the closest grey monster, 0 = stop
-@setvar! AutoNext 1
+@setvar! AutoNext 0
 // When the target vanishes, wait this long for it to come back (ms)
 // before taking a new one (or stopping with AutoNext 0). Covers mobs
 // that go hidden/invisible for a few seconds. The client can't tell a
@@ -112,8 +118,11 @@ if listexists 'nox_single'
 endif
 createlist 'nox_single'
 
-// Leyline may still be armed from a previous run, so the armed flag
-// is kept. LeylineArmWait clears it if no hit ever lands.
+// A Leyline try flag left over from a previous run would be read as
+// "Leyline went off" on the first pass (the journal is cleared by then)
+if listexists 'f_leytry'
+    removelist 'f_leytry'
+endif
 
 // Drop a cursor left over from a previous run
 if targetexists
@@ -166,11 +175,6 @@ endif
 if not timerexists 'leytry'
     createtimer 'leytry'
     settimer 'leytry' 99999
-endif
-// Time since Leyline was armed
-if not timerexists 'leyarm'
-    createtimer 'leyarm'
-    settimer 'leyarm' 99999
 endif
 if not timerexists 'rmushroom'
     createtimer 'rmushroom'
@@ -273,14 +277,14 @@ settimer 'rlost' 0
 while listexists 'nox_single' and not dead
 
     // ===== 1. Clear the journal =====
-    // Armed Leyline went off (a staff hit landed)? Then its cooldown
-    // starts. No hit within LeylineArmWait: forget it, so it is armed again.
-    if listexists 'f_leyarmed'
+    // Did the last Leyline try go off? Only the Leyline buff counts as
+    // success. Anything else (refused, no answer) is retried 3 s later.
+    // (Fallback: normally the Leyline block below already caught it.)
+    if listexists 'f_leytry'
+        removelist 'f_leytry'
         if findbuff 'Leyline'
-            removelist 'f_leyarmed'
             settimer 'leyline' 0
-        elseif timer 'leyarm' >= LeylineArmWait
-            removelist 'f_leyarmed'
+            cooldown "Leyline"
         endif
     endif
     clearsysmsg
@@ -453,20 +457,24 @@ while listexists 'nox_single' and not dead
             wait 200
         endif
 
-        // Arm Leyline at LeylineMana or less. Never while its buff is up
-        // or while it is already armed (a second command would disarm it).
-        // Runs before the action, so it is armed on the first pass below
-        // LeylineMana. Not a spell, so it never blocks a cast.
-        if UseLeyline = 1 and mana <= LeylineMana and not findbuff 'Leyline' and not listexists 'f_leyarmed' and timer 'leyline' >= LeylineCD and timer 'leytry' >= 3000
-            clearsysmsg
+        // Leyline on cooldown at LeylineMana or less, never while its buff
+        // is still up. Runs before the action, so it fires on the first
+        // pass below LeylineMana. Not a spell, so it never blocks a cast.
+        // If the buff shows up right away, the cooldown bar starts at once,
+        // otherwise the next pass checks the buff again.
+        if UseLeyline = 1 and mana <= LeylineMana and not findbuff 'Leyline' and timer 'leyline' >= LeylineCD and timer 'leytry' >= 3000
             say '[WeaponAbility2'
             settimer 'leytry' 0
-            // Give a refusal time to reach the journal
+            if not listexists 'f_leytry'
+                createlist 'f_leytry'
+            endif
+            // Give the buff time to show up
             wait 300
-            if not insysmsg 'cannot perform that ability yet'
-                // No refusal: armed, wait for a staff hit to land
-                createlist 'f_leyarmed'
-                settimer 'leyarm' 0
+            if findbuff 'Leyline'
+                settimer 'leyline' 0
+                cooldown "Leyline"
+                // Already handled, the next pass must not restart the bar
+                removelist 'f_leytry'
             endif
             attack noxMain
         endif
@@ -477,6 +485,11 @@ while listexists 'nox_single' and not dead
             @setvar! CurseDue 1
         elseif not inlist 'rcursed' noxMain
             @setvar! CurseDue 1
+        endif
+        // Flamestrike first? Only while mana is above FSPriorityMana
+        @setvar! FSFirst 0
+        if FSPriorityMana > 0 and mana > FSPriorityMana
+            @setvar! FSFirst 1
         endif
         // Is the chosen filler castable? Flamestrike needs less mana
         // while Soulfire is up
@@ -547,6 +560,20 @@ while listexists 'nox_single' and not dead
                         // Only a really answered cursor counts as cursed
                         clearlist 'rcursed'
                         pushlist 'rcursed' noxMain
+                    endif
+                endif
+
+            // 3b. Flamestrike first while mana is above FSPriorityMana,
+            // 40 mana. No timer, the procs below keep their own timers.
+            elseif FSFirst = 1
+                clearsysmsg
+                cast 'Flamestrike'
+                // A refusal comes at once, without one the cast has started
+                wait 300
+                if not insysmsg 'recovered' and not insysmsg 'already casting'
+                    waitfortarget 3500
+                    if targetexists
+                        target noxMain
                     endif
                 endif
 
